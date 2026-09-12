@@ -49,6 +49,7 @@ Standard success/error shape:
 | 404 | `NOT_FOUND` | Resource missing **or** outside the caller's organization (not disclosed) |
 | 409 | `CONFLICT` | Duplicate resource (e.g. email already registered) |
 | 413 | `PAYLOAD_TOO_LARGE` | Upload exceeds the configured limit |
+| 429 | `RATE_LIMITED` | Too many requests from this client. Limits: failed logins, registrations, uploads, and an overall per-IP ceiling. Retry after the `RateLimit` header's reset time |
 | 502 | `AI_SERVICE_ERROR` | AI service returned an error |
 | 503 | `SERVICE_UNAVAILABLE` | A dependency (e.g. the database) is unavailable |
 | 504 | `AI_SERVICE_TIMEOUT` | AI service did not respond in time |

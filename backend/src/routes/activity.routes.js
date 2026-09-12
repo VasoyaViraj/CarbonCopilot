@@ -9,6 +9,7 @@ import {
 } from '../controllers/activity.controller.js';
 import { authenticate, authorize, requireFactoryAccess } from '../middleware/auth.middleware.js';
 import { csvUpload } from '../middleware/upload.middleware.js';
+import { uploadRateLimit } from '../middleware/security.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import {
   createActivitySchema,
@@ -29,6 +30,7 @@ router.post(
   '/activities/upload',
   authenticate,
   authorize(ROLE_GROUPS.WRITE_OPERATIONAL_DATA),
+  uploadRateLimit,
   csvUpload('file'),
   validate({ body: csvUploadBodySchema }),
   uploadActivitiesCsv
