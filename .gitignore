@@ -27,3 +27,6 @@ graphify-out/
 .idea/
 .vscode/
 *.log
+
+# Internal planning documents (kept locally, not published)
+docs/

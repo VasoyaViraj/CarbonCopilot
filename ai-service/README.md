@@ -1,6 +1,6 @@
 # EcoTrace AI — AI Service
 
-Python + FastAPI service that owns AI orchestration (LangChain, LangGraph, MCP). Built in Phase 13 onward of [docs/phase-wise-prompts.md](../docs/phase-wise-prompts.md).
+Python + FastAPI service that owns AI orchestration (LangChain, LangGraph, MCP).
 
 Responsibilities:
 - Intent routing and tool orchestration (LangGraph).

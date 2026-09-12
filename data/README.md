@@ -3,9 +3,9 @@
 Demo datasets and templates for EcoTrace AI. All data here is **fictional / demo data** and must be labelled as such wherever it is shown.
 
 Contents:
-- `templates/activities-template.csv` — CSV upload template (the required columns `date, process, energy, fuel, material, production, waste` plus optional type/unit columns). It is identical to `GET /api/activities/template`, and a backend test keeps the two in sync. See `docs/API_CONTRACT.md` §5 for the column rules.
+- `templates/activities-template.csv` — CSV upload template (the required columns `date, process, energy, fuel, material, production, waste` plus optional type/unit columns). It is identical to `GET /api/activities/template`, and a backend test keeps the two in sync.
 
-- `demo/abc-metal-manufacturing.csv` is the ABC Metal Manufacturing demo dataset: one row per process per month for Oct 2025 – Sep 2026. Monthly values vary seasonally, and the annual totals match the demo script (`docs/DEMO_SCRIPT.md`):
+- `demo/abc-metal-manufacturing.csv` is the ABC Metal Manufacturing demo dataset: one row per process per month for Oct 2025 – Sep 2026. Monthly values vary seasonally, and the annual totals match the demo scenario:
 
   | Input | Annual total | Split |
   |---|---|---|
