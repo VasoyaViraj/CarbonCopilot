@@ -1,2 +1,16 @@
-# Phase 5: shared operational-data schemas. Phase 13 adds FastAPI, LangChain, LangGraph and MCP.
+# Core API framework
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+
+# LLM + Agent stack (Gemini free tier via Google Generative AI)
+langchain>=0.3,<1
+langchain-google-genai>=2.0,<3
+langgraph>=0.3,<1
+
+# HTTP client for calling Express backend (MCP tools)
+httpx>=0.27,<1
+
+# Configuration & validation
 pydantic>=2.7,<3
+pydantic-settings>=2.4,<3
+python-dotenv>=1.0,<2

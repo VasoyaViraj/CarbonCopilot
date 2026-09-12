@@ -10,8 +10,17 @@ from app.schemas.operational import (
     EmissionCalculation,
     EmissionFactorSource,
 )
+from app.schemas.ai_response import (
+    ConfidenceLevel,
+    CopilotRequest,
+    CopilotResponse,
+    RecommendationItem,
+    ScenarioSummary,
+    ToolUsed,
+)
 
 __all__ = [
+    # Operational
     "Activity",
     "ActivityCategory",
     "ActivityEmission",
@@ -20,4 +29,11 @@ __all__ = [
     "CalculateEmissionsInput",
     "EmissionCalculation",
     "EmissionFactorSource",
+    # AI response
+    "ConfidenceLevel",
+    "CopilotRequest",
+    "CopilotResponse",
+    "RecommendationItem",
+    "ScenarioSummary",
+    "ToolUsed",
 ]
