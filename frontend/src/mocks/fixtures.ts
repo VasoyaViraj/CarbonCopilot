@@ -8,49 +8,6 @@
  */
 import type { CostLevel, Severity } from "@/types/domain"
 
-export const mockKpis = {
-  totalEmissions: 1250,
-  emissionUnit: "tCO2e",
-  production: 10000,
-  productionUnit: "tonnes",
-  emissionIntensity: 0.125,
-  intensityUnit: "tCO2e/tonne",
-}
-
-export const mockEmissionsByProcess = [
-  { label: "Furnace", value: 520 },
-  { label: "Electricity", value: 250 },
-  { label: "Boiler", value: 180 },
-  { label: "Transport", value: 80 },
-  { label: "Waste", value: 70 },
-]
-
-export const mockEmissionsBySource = [
-  { label: "Natural gas", value: 610 },
-  { label: "Electricity", value: 430 },
-  { label: "Diesel", value: 110 },
-  { label: "Waste", value: 70 },
-  { label: "Materials", value: 30 },
-]
-
-export const mockEmissionHistory = [
-  { period: "2026-04", co2e: 98 },
-  { period: "2026-05", co2e: 104 },
-  { period: "2026-06", co2e: 101 },
-  { period: "2026-07", co2e: 110 },
-  { period: "2026-08", co2e: 106 },
-  { period: "2026-09", co2e: 104 },
-]
-
-export const mockElectricityHistory = [
-  { period: "2026-04", quantity: 68000 },
-  { period: "2026-05", quantity: 71000 },
-  { period: "2026-06", quantity: 70500 },
-  { period: "2026-07", quantity: 74200 },
-  { period: "2026-08", quantity: 72100 },
-  { period: "2026-09", quantity: 70900 },
-]
-
 export const mockHotspots: {
   processId: number
   process: string
