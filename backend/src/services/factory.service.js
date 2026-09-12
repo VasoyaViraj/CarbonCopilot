@@ -1,9 +1,25 @@
 import prisma from '../db/db.js';
 
+// Request bodies are camelCase (API contract) while the Prisma models use snake_case columns.
+// Undefined values are ignored by Prisma, so partial updates leave omitted fields untouched.
+const toFactoryData = (data) => ({
+  name: data.name,
+  industry_type: data.industryType,
+  location: data.location,
+  production_capacity: data.productionCapacity,
+  production_unit: data.productionUnit,
+});
+
+const toProcessData = (data) => ({
+  name: data.name,
+  process_type: data.processType,
+  description: data.description,
+});
+
 export async function createFactory(user, data) {
   return prisma.factory.create({
     data: {
-      ...data,
+      ...toFactoryData(data),
       organization_id: user.organizationId,
     },
   });
@@ -25,7 +41,7 @@ export async function getFactoryById(factoryId) {
 export async function updateFactory(factoryId, data) {
   return prisma.factory.update({
     where: { id: factoryId },
-    data,
+    data: toFactoryData(data),
   });
 }
 
@@ -38,7 +54,7 @@ export async function deleteFactory(factoryId) {
 export async function createProcess(factoryId, data) {
   return prisma.process.create({
     data: {
-      ...data,
+      ...toProcessData(data),
       factory_id: factoryId,
     },
   });
@@ -60,7 +76,7 @@ export async function getProcessById(processId) {
 export async function updateProcess(processId, data) {
   return prisma.process.update({
     where: { id: processId },
-    data,
+    data: toProcessData(data),
   });
 }
 

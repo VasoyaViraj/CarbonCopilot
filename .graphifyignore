@@ -1,0 +1,13 @@
+# graphify corpus rules (gitignore syntax). .gitignore is applied as well, so
+# node_modules/, dist/, .env files etc. are already excluded; only project-specific
+# noise is listed here.
+
+# Vendored AI-agent skill packs (Prisma reference docs) — not project code or docs
+backend/.agents/
+backend/.claude/
+backend/.windsurf/
+backend/skills-lock.json
+
+# Lockfiles and graphify's own output
+package-lock.json
+graphify-out/

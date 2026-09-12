@@ -7,5 +7,8 @@ export const ROLE_LABELS: Record<Role, string> = {
   REGULATOR: "Regulator / auditor",
 }
 
+/** Mirrors the backend's WRITE_OPERATIONAL_DATA group for UI affordances; the API remains authoritative. */
+export const OPERATIONAL_DATA_WRITERS: Role[] = ["ADMIN", "FACTORY_OPERATOR"]
+
 /** Roles offered at self-registration (ADMIN is never self-assigned). */
 export const SELF_REGISTRABLE_ROLES: Exclude<Role, "ADMIN">[] = ["FACTORY_OPERATOR", "CONSULTANT", "REGULATOR"]

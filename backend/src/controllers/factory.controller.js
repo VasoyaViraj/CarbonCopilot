@@ -1,6 +1,14 @@
 import * as factoryService from '../services/factory.service.js';
 import { getAuthorizedProcess } from '../services/access.service.js';
+import { ApiError } from '../utils/ApiError.js';
 import { sendSuccess } from '../utils/response.js';
+
+/** A process addressed as /factories/:id/processes/:processId must belong to that factory, not just the organization. */
+async function getProcessInFactory(req) {
+  const process = await getAuthorizedProcess(req.user, req.params.processId);
+  if (process.factory_id !== req.factory.id) throw ApiError.notFound('Process');
+  return process;
+}
 
 export const createFactory = async (req, res) => {
   const factory = await factoryService.createFactory(req.user, req.body);
@@ -40,13 +48,13 @@ export const getProcesses = async (req, res) => {
 };
 
 export const updateProcess = async (req, res) => {
-  const process = await getAuthorizedProcess(req.user, req.params.processId);
+  const process = await getProcessInFactory(req);
   const updatedProcess = await factoryService.updateProcess(process.id, req.body);
   sendSuccess(res, updatedProcess);
 };
 
 export const deleteProcess = async (req, res) => {
-  const process = await getAuthorizedProcess(req.user, req.params.processId);
+  const process = await getProcessInFactory(req);
   await factoryService.deleteProcess(process.id);
   sendSuccess(res, { deleted: true });
 };

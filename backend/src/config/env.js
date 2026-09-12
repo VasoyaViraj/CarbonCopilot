@@ -12,6 +12,9 @@ const envSchema = z.object({
   AI_SERVICE_TOKEN: z.string().optional(),
   AI_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().positive().default(5),
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+  API_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
 });
 
 const parsed = envSchema.safeParse(process.env);

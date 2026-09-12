@@ -1,0 +1,2 @@
+# Phase 5: shared operational-data schemas. Phase 13 adds FastAPI, LangChain, LangGraph and MCP.
+pydantic>=2.7,<3

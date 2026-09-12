@@ -19,6 +19,9 @@ coverage/
 # Generated Prisma client
 backend/src/generated/
 
+# graphify knowledge graph (generated locally, refreshed by its git hooks)
+graphify-out/
+
 # OS / editor
 .DS_Store
 .idea/

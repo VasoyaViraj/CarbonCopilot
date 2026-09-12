@@ -15,7 +15,8 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "prisma db seed",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "emissions:backfill": "node scripts/calculate-missing-emissions.js"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
@@ -24,9 +25,13 @@
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
+    "csv-parse": "^7.0.2",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.3.0",
     "nodemon": "^3.1.14",
     "pg": "^8.23.0",
     "zod": "^4.6.2"

@@ -1,4 +1,4 @@
-import { apiClient, ApiSuccess } from './apiClient';
+import { apiClient, type ApiSuccess } from './apiClient';
 
 export interface Factory {
   id: number;

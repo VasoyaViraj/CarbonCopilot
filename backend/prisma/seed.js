@@ -4,7 +4,15 @@ import 'dotenv/config';
 import bcrypt from 'bcrypt';
 import prisma from '../src/db/db.js';
 
-const DEMO_PASSWORD = process.env.DEMO_USER_PASSWORD || 'EcoTrace@Demo1';
+const DEFAULT_DEMO_PASSWORD = 'EcoTrace@Demo1';
+const DEMO_PASSWORD = process.env.DEMO_USER_PASSWORD || DEFAULT_DEMO_PASSWORD;
+
+// The default password is published in .env.example and the demo docs; seeding it into a
+// production database would create publicly known ADMIN credentials.
+if (process.env.NODE_ENV === 'production' && DEMO_PASSWORD === DEFAULT_DEMO_PASSWORD) {
+  console.error('Refusing to seed demo accounts in production with the published default password. Set DEMO_USER_PASSWORD.');
+  process.exit(1);
+}
 
 const FACTOR_REFERENCE =
   'Illustrative demo factor — replace with an authoritative regional source (e.g. national grid, IPCC, DEFRA) before real-world use.';
