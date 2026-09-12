@@ -5,6 +5,7 @@ No business logic is duplicated here; this module only handles transport.
 """
 
 import logging
+from contextvars import ContextVar, Token
 from typing import Any, Dict, Optional
 
 import httpx
@@ -28,6 +29,29 @@ _DEFAULT_HEADERS: Dict[str, str] = {
 # service-to-service calls without requiring a user JWT.
 if _settings.ai_service_token:
     _DEFAULT_HEADERS["X-AI-Service-Token"] = _settings.ai_service_token
+
+
+# The user on whose behalf the current copilot request runs. Set per request by the
+# /copilot endpoint from the X-Acting-User-Id header Express sends; the backend loads
+# that user and applies its normal organization/factory authorization to every call.
+_acting_user_id: ContextVar[Optional[int]] = ContextVar("acting_user_id", default=None)
+
+
+def set_acting_user(user_id: int) -> Token:
+    """Scope backend calls made in the current context to `user_id`."""
+    return _acting_user_id.set(user_id)
+
+
+def reset_acting_user(token: Token) -> None:
+    _acting_user_id.reset(token)
+
+
+def _request_headers() -> Dict[str, str]:
+    headers = dict(_DEFAULT_HEADERS)
+    user_id = _acting_user_id.get()
+    if user_id is not None:
+        headers["X-Acting-User-Id"] = str(user_id)
+    return headers
 
 
 def _get_base_url() -> str:
@@ -60,7 +84,7 @@ async def backend_get(path: str, params: Optional[Dict[str, Any]] = None) -> Any
 
     try:
         async with httpx.AsyncClient(
-            headers=_DEFAULT_HEADERS,
+            headers=_request_headers(),
             timeout=_settings.llm_timeout_seconds,
         ) as client:
             response = await client.get(url, params=params)
@@ -89,7 +113,7 @@ async def backend_post(path: str, payload: Dict[str, Any]) -> Any:
 
     try:
         async with httpx.AsyncClient(
-            headers=_DEFAULT_HEADERS,
+            headers=_request_headers(),
             timeout=_settings.llm_timeout_seconds,
         ) as client:
             response = await client.post(url, json=payload)

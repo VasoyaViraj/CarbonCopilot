@@ -294,7 +294,8 @@ def build_scenario_evidence(
     cost = result.get("estimatedCost") if "estimatedCost" in result else result.get("estimated_cost")
     savings = result.get("estimatedSavings") if "estimatedSavings" in result else result.get("estimated_savings")
     payback = result.get("paybackPeriod") if "paybackPeriod" in result else result.get("payback_period")
-    unit = result.get("co2eUnit") if "co2eUnit" in result else (result.get("co2e_unit") or "tCO2e")
+    # The Express scenario engine reports its unit as `unit`.
+    unit = result.get("co2eUnit") or result.get("unit") or result.get("co2e_unit") or "tCO2e"
 
     ev = ScenarioEvidence(
         recycled_material_percent=params.get("recycled_material_percent", 0.0),

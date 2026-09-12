@@ -9,7 +9,12 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('1d'),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
   AI_SERVICE_URL: z.string().default('http://localhost:8000'),
-  AI_SERVICE_TOKEN: z.string().optional(),
+  // Shared secret for Express <-> AI service calls; empty disables the AI Copilot.
+  AI_SERVICE_TOKEN: z
+    .string()
+    .optional()
+    .transform((value) => value || undefined)
+    .refine((value) => value === undefined || value.length >= 16, 'AI_SERVICE_TOKEN must be at least 16 characters when set'),
   AI_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().positive().default(5),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),

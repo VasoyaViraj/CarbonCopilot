@@ -9,6 +9,8 @@ export default defineConfig({
       JWT_SECRET: 'test-only-secret-not-for-production',
       JWT_EXPIRES_IN: '1h',
       DATABASE_URL: 'postgresql://test:test@localhost:5432/ecotrace_test',
+      AI_SERVICE_URL: 'http://ai.test',
+      AI_SERVICE_TOKEN: 'test-only-ai-service-token',
     },
   },
 });

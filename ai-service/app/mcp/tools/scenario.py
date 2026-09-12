@@ -48,7 +48,7 @@ async def calculate_scenario(
 ) -> Dict[str, Any]:
     """Call the Express deterministic what-if engine.
 
-    Scenario data is stored separately — it NEVER overwrites baseline emissions.
+    Calculation only: nothing is stored and baseline emissions are never modified.
 
     Args:
         factory_id: Target factory.
@@ -73,15 +73,15 @@ async def calculate_scenario(
         validated.factory_id, params.model_dump(),
     )
 
+    # The calculate endpoint stores nothing; the factory comes from the path.
     payload = {
-        "factoryId": validated.factory_id,
         "recycledMaterialPercent": params.recycled_material_percent,
         "energyEfficiencyPercent": params.energy_efficiency_percent,
         "fuelReplacementPercent": params.fuel_replacement_percent,
         "wasteRecoveryPercent": params.waste_recovery_percent,
     }
 
-    return await backend_post("/scenarios", payload)
+    return await backend_post(f"/factories/{validated.factory_id}/scenarios/calculate", payload)
 
 
 class ListScenariosInput(BaseModel):

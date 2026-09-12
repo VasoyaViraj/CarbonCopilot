@@ -1,12 +1,64 @@
+import { timingSafeEqual } from 'node:crypto';
+import { env } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
 import { verifyAccessToken } from '../utils/jwt.js';
 import { getUserById } from '../services/auth.service.js';
 import { getAuthorizedFactory } from '../services/access.service.js';
 
+const SERVICE_TOKEN_HEADER = 'x-ai-service-token';
+const ACTING_USER_HEADER = 'x-acting-user-id';
+// Stateless calculations the AI service may POST. Everything else it may only read.
+const SERVICE_WRITE_ALLOWLIST = [/^\/api\/factories\/\d+\/scenarios\/calculate\/?$/, /^\/api\/emissions\/calculate\/?$/];
+
 function extractToken(req) {
   const header = req.get('authorization');
   if (header?.startsWith('Bearer ')) return header.slice('Bearer '.length).trim();
   return req.cookies?.token ?? null;
+}
+
+const toRequestUser = (user) => ({
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  organizationId: user.organization_id,
+});
+
+async function loadUser(rawId) {
+  const userId = Number(rawId);
+  return Number.isSafeInteger(userId) && userId > 0 ? getUserById(userId) : null;
+}
+
+function isServiceToken(value) {
+  if (!env.AI_SERVICE_TOKEN || typeof value !== 'string') return false;
+  const expected = Buffer.from(env.AI_SERVICE_TOKEN);
+  const received = Buffer.from(value);
+  return expected.length === received.length && timingSafeEqual(expected, received);
+}
+
+function assertServiceMayCall(req) {
+  if (req.method === 'GET' || req.method === 'HEAD') return;
+  const path = req.originalUrl.split('?')[0];
+  // The stored-activity form of /emissions/calculate rewrites an emission record.
+  const storedRecalculation = req.body && typeof req.body === 'object' && 'activityId' in req.body;
+  if (!SERVICE_WRITE_ALLOWLIST.some((pattern) => pattern.test(path)) || storedRecalculation) {
+    throw ApiError.forbidden('The AI service may only read data and run stateless calculations');
+  }
+}
+
+/**
+ * The AI service calls back into this API while answering a copilot question that
+ * Express forwarded for an authenticated user. The shared secret proves the caller is
+ * the AI service; X-Acting-User-Id names that user, who is loaded from the database so
+ * every organization/factory check applies exactly as for their own JWT (BR-13).
+ */
+async function authenticateAiService(req) {
+  if (!isServiceToken(req.get(SERVICE_TOKEN_HEADER))) throw ApiError.unauthenticated('Invalid service credentials');
+  const user = await loadUser(req.get(ACTING_USER_HEADER));
+  if (!user) throw ApiError.unauthenticated('Unknown acting user');
+  assertServiceMayCall(req);
+  req.user = toRequestUser(user);
+  req.viaAiService = true;
 }
 
 /**
@@ -15,6 +67,11 @@ function extractToken(req) {
  * token are never trusted for authorization.
  */
 export const authenticate = async (req, res, next) => {
+  if (req.get(SERVICE_TOKEN_HEADER) !== undefined) {
+    await authenticateAiService(req);
+    return next();
+  }
+
   const token = extractToken(req);
   if (!token) throw ApiError.unauthenticated();
 
@@ -25,17 +82,10 @@ export const authenticate = async (req, res, next) => {
     throw ApiError.unauthenticated('Invalid or expired token');
   }
 
-  const userId = Number(payload.sub);
-  const user = Number.isSafeInteger(userId) && userId > 0 ? await getUserById(userId) : null;
+  const user = await loadUser(payload.sub);
   if (!user) throw ApiError.unauthenticated('Invalid or expired token');
 
-  req.user = {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    organizationId: user.organization_id,
-  };
+  req.user = toRequestUser(user);
   next();
 };
 
