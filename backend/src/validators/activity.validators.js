@@ -71,6 +71,20 @@ export const createActivitySchema = z
     };
   });
 
+// multipart/form-data fields arrive as strings.
+const formBoolean = z
+  .enum(['true', 'false'], { error: 'Must be true or false' })
+  .transform((value) => value === 'true')
+  .default(false);
+
+export const csvUploadBodySchema = z
+  .object({
+    factoryId: z.string({ error: 'factoryId is required' }).trim().min(1, 'factoryId is required'),
+    dryRun: formBoolean,
+    skipInvalidRows: formBoolean,
+  })
+  .strict();
+
 const dateFilter = z
   .string()
   .trim()
