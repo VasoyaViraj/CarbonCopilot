@@ -164,12 +164,34 @@ Request:
 ## 5. Activities
 
 ```http
+GET  /api/activities/types
 POST /api/processes/:id/activities
 GET  /api/processes/:id/activities
+GET  /api/factories/:id/activities
 POST /api/activities/upload
 ```
 
-Activity:
+Writing activities requires `ADMIN` or `FACTORY_OPERATOR`; every role in the organization may read them. Processes and factories outside the caller's organization return `404 NOT_FOUND`.
+
+### Supported activity types
+
+`GET /api/activities/types` returns the catalog used by every ingestion path. Each type maps to an emission factor, and units are normalised to the factor's canonical unit (`kwh` → `kWh`, `litres` → `L`). Units are never converted; a unit that isn't a spelling of the canonical unit is rejected.
+
+| Category | Types | Unit |
+|---|---|---|
+| ENERGY | `ELECTRICITY` | kWh |
+| FUEL | `NATURAL_GAS` / `DIESEL` / `LPG` | m3 / L / kg |
+| MATERIAL | `VIRGIN_ALUMINUM`, `RECYCLED_ALUMINUM`, `STEEL` | tonne |
+| WASTE | `WASTE_LANDFILL`, `WASTE_RECYCLED` | tonne |
+
+Production units: `tonnes` (default when omitted), `kg`, `units`.
+
+### Create (manual or simulated)
+
+```http
+POST /api/processes/:id/activities
+```
+
 ```json
 {
   "activityDate": "2026-09-12",
@@ -182,16 +204,42 @@ Activity:
 }
 ```
 
-CSV upload should validate:
-```text
-date
-process
-energy
-fuel
-material
-production
-waste
+- `activityDate`: `YYYY-MM-DD` (stored as UTC midnight) or an ISO-8601 timestamp with timezone. It must be a real date, not before 2000-01-01, and not in the future.
+- `quantity`: a JSON number greater than 0 and no larger than the type's plausibility ceiling (which catches unit mistakes).
+- `unit`: optional. It defaults to the type's canonical unit.
+- `productionQuantity`: optional, a number ≥ 0. Record production once per process and period so it isn't double counted.
+- `source`: `MANUAL` (default) or `SIMULATION`. `CSV` is rejected here because CSV rows must go through the upload pipeline.
+
+`201` response (the same shape is used by the list endpoints):
+
+```json
+{
+  "id": 101,
+  "processId": 7,
+  "processName": "Furnace",
+  "activityDate": "2026-09-12T00:00:00.000Z",
+  "energyType": "NATURAL_GAS",
+  "category": "FUEL",
+  "quantity": 300,
+  "unit": "m3",
+  "productionQuantity": 8,
+  "productionUnit": "tonnes",
+  "source": "MANUAL",
+  "isSimulated": false,
+  "createdAt": "2026-09-12T10:00:00.000Z"
+}
 ```
+
+`isSimulated` is `true` for every `SIMULATION` activity (BR-12).
+
+### List
+
+```http
+GET /api/processes/:id/activities
+GET /api/factories/:id/activities
+```
+
+Query: `from`, `to` (inclusive `YYYY-MM-DD`), `source`, `energyType`, `limit` (1–200, default 50), `offset`. The response is `{ "items": [Activity], "total", "limit", "offset" }`, newest first.
 
 ## 6. Emissions
 
