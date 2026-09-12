@@ -1,16 +1,15 @@
 import { useCallback, useState } from "react"
 import { Link } from "react-router"
-import { Factory as FactoryIcon, Lock, Play, Square } from "lucide-react"
+import { Factory as FactoryIcon, Lock } from "lucide-react"
 import PageHeader from "@/components/PageHeader"
 import EmptyState from "@/components/feedback/EmptyState"
 import ErrorState from "@/components/feedback/ErrorState"
 import LoadingState from "@/components/feedback/LoadingState"
-import NotConnectedNotice from "@/components/feedback/NotConnectedNotice"
 import CsvImportPanel from "@/components/data-input/CsvImportPanel"
 import ManualActivityForm from "@/components/data-input/ManualActivityForm"
 import RecentActivitiesTable from "@/components/data-input/RecentActivitiesTable"
-import { Badge } from "@/components/ui/badge"
-import { Button, buttonVariants } from "@/components/ui/button"
+import SimulationPanel from "@/components/data-input/SimulationPanel"
+import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select } from "@/components/ui/input"
 import { Tabs } from "@/components/ui/tabs"
@@ -23,28 +22,6 @@ const TABS = [
   { id: "csv", label: "CSV Upload" },
   { id: "simulation", label: "Simulation" },
 ]
-
-function SimulationPanel() {
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <Badge variant="outline">SIMULATED</Badge>
-        <p className="text-sm text-muted-foreground">
-          Simulated readings are synthetic and are always labelled as simulated — they are not physical sensor measurements.
-        </p>
-      </div>
-      <div className="flex gap-2">
-        <Button disabled>
-          <Play /> Start
-        </Button>
-        <Button variant="outline" disabled>
-          <Square /> Stop
-        </Button>
-      </div>
-      <NotConnectedNotice>The reading simulator is not connected yet.</NotConnectedNotice>
-    </div>
-  )
-}
 
 export default function DataInputPage() {
   const { user } = useAuth()
@@ -114,7 +91,7 @@ export default function DataInputPage() {
                 <CsvImportPanel factoryId={factory.id} catalog={catalog} readOnly={!canWrite} onImported={onDataChanged} />
               </div>
               <div id="panel-simulation" role="tabpanel" aria-labelledby="tab-simulation" hidden={tab !== "simulation"}>
-                <SimulationPanel />
+                <SimulationPanel processes={processes} catalog={catalog} readOnly={!canWrite} onReading={onDataChanged} />
               </div>
             </CardContent>
           </Card>
