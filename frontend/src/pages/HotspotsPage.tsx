@@ -12,7 +12,7 @@ import DashboardNotices from "@/components/dashboard/DashboardNotices"
 import EmptyState from "@/components/feedback/EmptyState"
 import ErrorState from "@/components/feedback/ErrorState"
 import LoadingState from "@/components/feedback/LoadingState"
-import NotConnectedNotice from "@/components/feedback/NotConnectedNotice"
+import AiAnalysisPanel from "@/components/ai/AiAnalysisPanel"
 import HotspotDetailPanel from "@/components/hotspots/HotspotDetailPanel"
 
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -20,6 +20,7 @@ import { Card } from "@/components/ui/card"
 
 import { useAnomalySignal } from "@/hooks/useAnomalySignal"
 import { useFactorySelection } from "@/hooks/useFactorySelection"
+import { useCopilotRequest } from "@/hooks/useCopilotRequest"
 import { useHotspotDetail, useHotspots } from "@/hooks/useHotspots"
 
 import type { HotspotThresholds } from "@/services/hotspotService"
@@ -66,6 +67,15 @@ export default function HotspotsPage() {
   )
 
   const factoryId = factory?.id ?? null
+
+  /*
+   * AI Analysis of one hotspot: explains the deterministic ranking and
+   * root-cause evidence; it never recalculates them.
+   */
+  const [analysisProcess, setAnalysisProcess] =
+    useState<string | null>(null)
+  const analysis = useCopilotRequest(factoryId)
+  const analysisRef = useRef<HTMLDivElement>(null)
 
   /*
    * Main hotspot ranking.
@@ -131,12 +141,33 @@ export default function HotspotsPage() {
     }
   }, [selectedProcessId])
 
+  useEffect(() => {
+    if (analysisProcess != null) {
+      analysisRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      })
+    }
+  }, [analysisProcess])
+
   /*
-   * Changing factory also clears the currently selected process.
+   * Changing factory also clears the selected process and AI analysis.
    */
   const changeFactory = (id: number) => {
     setSelectedProcessId(null)
+    setAnalysisProcess(null)
+    analysis.reset()
     selectFactory(id)
+  }
+
+  const analyze = (process: string) => {
+    setAnalysisProcess(process)
+    void analysis.ask(`Why is ${process} a hotspot?`)
+  }
+
+  const closeAnalysis = () => {
+    setAnalysisProcess(null)
+    analysis.reset()
   }
 
   let content
@@ -300,12 +331,23 @@ export default function HotspotsPage() {
           {current.hotspots.length} processes.
         </p>
 
-        <div className="mb-4">
-          <NotConnectedNotice>
-            AI Analysis becomes available once the AI service is
-            connected. The ranking is calculated deterministically.
-          </NotConnectedNotice>
-        </div>
+        {analysisProcess != null && (
+          <div
+            ref={analysisRef}
+            className="mb-6 scroll-mt-6"
+          >
+            <AiAnalysisPanel
+              title={`AI analysis: ${analysisProcess}`}
+              description="Separates recorded data, derived metrics, unverified hypotheses and missing information. The ranking itself is calculated deterministically."
+              loading={analysis.loading}
+              error={analysis.error}
+              response={analysis.response}
+              loadingLabel={`Analyzing ${analysisProcess}…`}
+              onRetry={() => analyze(analysisProcess)}
+              onClose={closeAnalysis}
+            />
+          </div>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {current.hotspots.map((hotspot) => (
@@ -327,7 +369,7 @@ export default function HotspotsPage() {
                     : hotspot.processId,
                 )
               }
-              analyzeUnavailable
+              onAnalyze={() => analyze(hotspot.process)}
             />
           ))}
         </div>

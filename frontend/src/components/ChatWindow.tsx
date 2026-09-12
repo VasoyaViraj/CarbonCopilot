@@ -13,6 +13,8 @@ type ChatWindowProps = {
   placeholder?: string
   suggestions?: string[]
   footerNote?: ReactNode
+  /** Custom content for assistant messages (e.g. structured AI answers); falls back to plain text. */
+  renderContent?: (message: ChatMessage) => ReactNode | undefined
 }
 
 export default function ChatWindow({
@@ -23,6 +25,7 @@ export default function ChatWindow({
   placeholder = "Ask about your factory's emissions…",
   suggestions = [],
   footerNote,
+  renderContent,
 }: ChatWindowProps) {
   const [draft, setDraft] = useState("")
   const endRef = useRef<HTMLDivElement>(null)
@@ -65,22 +68,28 @@ export default function ChatWindow({
               {message.content}
             </p>
           ) : (
-            <div key={message.id} className={cn("flex gap-3", message.role === "user" && "flex-row-reverse")}>
-              <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted">
-                {message.role === "user" ? <User className="size-4" aria-hidden /> : <Bot className="size-4" aria-hidden />}
-              </div>
-              <div
-                className={cn(
-                  "max-w-[80%] rounded-xl px-3.5 py-2.5 text-sm whitespace-pre-wrap",
-                  message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
-                )}
-              >
-                {message.content}
-                {message.toolsUsed && message.toolsUsed.length > 0 && (
-                  <p className="mt-2 text-xs text-muted-foreground">Tools used: {message.toolsUsed.join(", ")}</p>
-                )}
-              </div>
-            </div>
+            (() => {
+              const custom = message.role === "assistant" ? renderContent?.(message) : undefined
+              return (
+                <div key={message.id} className={cn("flex gap-3", message.role === "user" && "flex-row-reverse")}>
+                  <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted">
+                    {message.role === "user" ? <User className="size-4" aria-hidden /> : <Bot className="size-4" aria-hidden />}
+                  </div>
+                  <div
+                    className={cn(
+                      "rounded-xl px-3.5 py-2.5 text-sm",
+                      custom ? "max-w-[92%] min-w-0 flex-1" : "max-w-[80%] whitespace-pre-wrap",
+                      message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+                    )}
+                  >
+                    {custom ?? message.content}
+                    {!custom && message.toolsUsed && message.toolsUsed.length > 0 && (
+                      <p className="mt-2 text-xs text-muted-foreground">Tools used: {message.toolsUsed.join(", ")}</p>
+                    )}
+                  </div>
+                </div>
+              )
+            })()
           )
         )}
         {loading && (

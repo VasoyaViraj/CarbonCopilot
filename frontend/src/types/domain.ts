@@ -1,3 +1,5 @@
+import type { CopilotResponse } from "@/services/aiService"
+
 export type Role = "ADMIN" | "FACTORY_OPERATOR" | "CONSULTANT" | "REGULATOR"
 
 export type AuthUser = {
@@ -19,4 +21,6 @@ export type ChatMessage = {
   role: ChatRole
   content: string
   toolsUsed?: string[]
+  /** Structured copilot answer for assistant messages. */
+  response?: CopilotResponse
 }

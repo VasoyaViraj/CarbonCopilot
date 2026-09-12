@@ -3,6 +3,7 @@ import { Factory as FactoryIcon, Lock, Recycle, RefreshCw, TriangleAlert } from 
 import PageHeader from "@/components/PageHeader"
 import FactorySelect from "@/components/FactorySelect"
 import RecommendationCard, { type ScorePart } from "@/components/RecommendationCard"
+import ActionPlanCard from "@/components/ai/ActionPlanCard"
 import EmptyState from "@/components/feedback/EmptyState"
 import ErrorState from "@/components/feedback/ErrorState"
 import LoadingState from "@/components/feedback/LoadingState"
@@ -160,6 +161,9 @@ export default function RecommendationsPage() {
               assumptions={recommendation.assumptions}
             />
           ))}
+        </div>
+        <div className="mt-6">
+          <ActionPlanCard factoryId={factoryId} />
         </div>
         <Card className="mt-6">
           <CardHeader>
