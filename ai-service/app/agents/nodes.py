@@ -20,6 +20,7 @@ from app.agents.intent_router import Intent, classify_message, last_user_message
 from app.agents.recommendation_workflow import build_recommendation_evidence
 from app.agents.scenario_workflow import build_scenario_evidence
 from app.agents.state import AgentState
+from app.mcp.tools.action_plan import ActionPlan, render_action_plan
 from app.services.llm import get_llm
 
 logger = logging.getLogger("ecotrace.ai.nodes")
@@ -131,6 +132,19 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
     tool_results = state.get("tool_results", {})
     tool_errors = state.get("tool_errors") or []
     messages = state["messages"]
+
+    if intent == Intent.ACTION_PLAN.value and tool_results.get("action_plan"):
+        # The plan is already structured and grounding-checked; render it as is
+        # rather than letting a second LLM call restate its numbers.
+        plan = ActionPlan.model_validate(tool_results["action_plan"])
+        answer = render_action_plan(plan)
+        logger.info("Rendered action plan (source=%s, confidence=%s)", plan.source.value, plan.confidence.value)
+        return {
+            "messages": [AIMessage(content=answer)],
+            "final_answer": answer,
+            "assumptions": plan.risks_and_limitations,
+            "confidence": plan.confidence.value,
+        }
 
     root_cause = state.get("root_cause")
 

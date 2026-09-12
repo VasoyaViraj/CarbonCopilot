@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from app.mcp.server import backend_post
+from app.mcp.server import backend_get, backend_post
 
 logger = logging.getLogger("ecotrace.ai.mcp.scenario")
 
@@ -82,6 +82,30 @@ async def calculate_scenario(
     }
 
     return await backend_post("/scenarios", payload)
+
+
+class ListScenariosInput(BaseModel):
+    factory_id: int = Field(..., gt=0)
+
+
+async def list_scenarios(factory_id: int) -> List[Dict[str, Any]]:
+    """Fetch the factory's saved what-if scenarios, newest first.
+
+    Read-only: nothing is calculated or stored. Each scenario carries the
+    engine's baseline, projected, reduction, cost, savings, payback and
+    assumptions.
+
+    Raises:
+        ValueError: on invalid input.
+        RuntimeError: if the backend is unreachable.
+    """
+    validated = ListScenariosInput(factory_id=factory_id)
+    logger.info("Tool: list_scenarios factory_id=%s", validated.factory_id)
+
+    data = await backend_get(f"/factories/{validated.factory_id}/scenarios")
+    if isinstance(data, dict):
+        return data.get("scenarios", [])
+    return data or []
 
 
 # ---------------------------------------------------------------------------

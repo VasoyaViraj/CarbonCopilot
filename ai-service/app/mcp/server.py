@@ -34,6 +34,13 @@ def _get_base_url() -> str:
     return _settings.backend_internal_url.rstrip("/")
 
 
+def _unwrap(body: Any) -> Any:
+    """Return the payload of Express's `{ success, data }` envelope (API_CONTRACT §1)."""
+    if isinstance(body, dict) and body.get("success") is True and "data" in body:
+        return body["data"]
+    return body
+
+
 async def backend_get(path: str, params: Optional[Dict[str, Any]] = None) -> Any:
     """Perform an authenticated GET against the Express backend.
 
@@ -58,7 +65,7 @@ async def backend_get(path: str, params: Optional[Dict[str, Any]] = None) -> Any
         ) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
-            return response.json()
+            return _unwrap(response.json())
     except httpx.HTTPStatusError as exc:
         logger.error("Backend returned %s for GET %s: %s", exc.response.status_code, url, exc.response.text)
         raise
@@ -87,7 +94,7 @@ async def backend_post(path: str, payload: Dict[str, Any]) -> Any:
         ) as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()
-            return response.json()
+            return _unwrap(response.json())
     except httpx.HTTPStatusError as exc:
         logger.error("Backend returned %s for POST %s: %s", exc.response.status_code, url, exc.response.text)
         raise

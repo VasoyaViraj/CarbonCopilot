@@ -10,6 +10,12 @@ import logging
 
 from langgraph.graph import END, START, StateGraph
 
+from app.agents.action_plan_workflow import (
+    GATHER_CONTEXT,
+    GENERATE_PLAN,
+    gather_action_plan_context,
+    generate_action_plan_node,
+)
 from app.agents.hotspot_workflow import (
     CALCULATE_EMISSIONS,
     IDENTIFY_HOTSPOTS,
@@ -57,6 +63,8 @@ def _route_after_factory_data(state: AgentState) -> str:
         return FETCH_HOTSPOTS
     if intent == Intent.SCENARIO.value:
         return PARSE_INTERVENTIONS
+    if intent == Intent.ACTION_PLAN.value:
+        return GATHER_CONTEXT
     return GENERATE_RESPONSE
 
 
@@ -87,6 +95,10 @@ def _build_graph() -> StateGraph:
     builder.add_node(PARSE_INTERVENTIONS, parse_intervention_parameters)
     builder.add_node(RUN_SCENARIO, run_scenario)
 
+    # Action plan workflow
+    builder.add_node(GATHER_CONTEXT, gather_action_plan_context)
+    builder.add_node(GENERATE_PLAN, generate_action_plan_node)
+
     # -----------------------------------------------------------------------
     # Edges
     # -----------------------------------------------------------------------
@@ -105,6 +117,7 @@ def _build_graph() -> StateGraph:
             CALCULATE_EMISSIONS: CALCULATE_EMISSIONS,
             FETCH_HOTSPOTS: FETCH_HOTSPOTS,
             PARSE_INTERVENTIONS: PARSE_INTERVENTIONS,
+            GATHER_CONTEXT: GATHER_CONTEXT,
             GENERATE_RESPONSE: GENERATE_RESPONSE,
         },
     )
@@ -123,6 +136,10 @@ def _build_graph() -> StateGraph:
     # Scenario workflow chain
     builder.add_edge(PARSE_INTERVENTIONS, RUN_SCENARIO)
     builder.add_edge(RUN_SCENARIO, GENERATE_RESPONSE)
+
+    # Action plan workflow chain
+    builder.add_edge(GATHER_CONTEXT, GENERATE_PLAN)
+    builder.add_edge(GENERATE_PLAN, GENERATE_RESPONSE)
 
     builder.add_edge(GENERATE_RESPONSE, END)
 
