@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
-from app.mcp.server import backend_post
+from app.mcp.server import backend_get, backend_post
 
 logger = logging.getLogger("ecotrace.ai.mcp.emissions")
 
@@ -69,3 +69,23 @@ async def calculate_emissions(
         payload["emissionFactorId"] = validated.emission_factor_id
 
     return await backend_post("/emissions/calculate", payload)
+
+
+class EmissionsSummaryInput(BaseModel):
+    factory_id: int = Field(..., gt=0)
+
+
+async def get_emissions_summary(factory_id: int) -> Dict[str, Any]:
+    """Fetch the factory's aggregated emissions from the Express carbon engine.
+
+    The backend sums the emissions it already calculated and stored; nothing
+    is recalculated here. Returns totals, byProcess, bySource, byDataSource,
+    production, intensity and warnings (docs/API_CONTRACT.md §6).
+
+    Raises:
+        ValueError: on invalid input.
+        RuntimeError: if backend is unreachable.
+    """
+    validated = EmissionsSummaryInput(factory_id=factory_id)
+    logger.info("Tool: get_emissions_summary factory_id=%s", validated.factory_id)
+    return await backend_get(f"/factories/{validated.factory_id}/emissions/summary")

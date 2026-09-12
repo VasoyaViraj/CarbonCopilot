@@ -3,6 +3,7 @@
 AgentState is the shared mutable context passed through every node of the graph.
 """
 
+import operator
 from typing import Annotated, Any, Dict, List, Optional
 
 from langchain_core.messages import BaseMessage
@@ -31,6 +32,17 @@ class AgentState(TypedDict):
 
     # Structured results returned by MCP tools (keyed by tool name)
     tool_results: Dict[str, Any]
+
+    # Names of the MCP tools called, in order (each node appends its own)
+    tools_used: Annotated[List[str], operator.add]
+
+    # Tool failures as {"tool": name, "error": message}; nodes record them
+    # instead of raising so the workflow can report what is missing.
+    tool_errors: Annotated[List[Dict[str, Any]], operator.add]
+
+    # Grounded evidence from the root_cause_analysis node
+    # (RootCauseAnalysis.model_dump) — only set on the hotspot workflow.
+    root_cause: Optional[Dict[str, Any]]
 
     # Final answer text produced by the generate_response node
     final_answer: Optional[str]

@@ -15,6 +15,7 @@ from typing import Any, Dict
 
 from langchain_core.messages import AIMessage, SystemMessage
 
+from app.agents.hotspot_workflow import HOTSPOT_RESPONSE_RULES
 from app.agents.intent_router import classify_message, last_user_message
 from app.agents.state import AgentState
 from app.services.llm import get_llm
@@ -72,10 +73,17 @@ async def load_factory_data(state: AgentState) -> Dict[str, Any]:
 
     try:
         profile = await get_factory_profile(factory_id)
-        return {"tool_results": {**state.get("tool_results", {}), "factory_profile": profile}}
+        return {
+            "tool_results": {**state.get("tool_results", {}), "factory_profile": profile},
+            "tools_used": ["get_factory_profile"],
+        }
     except Exception as exc:
         logger.error("Failed to load factory data: %s", exc)
-        return {"tool_results": {**state.get("tool_results", {}), "factory_profile": None}}
+        return {
+            "tool_results": {**state.get("tool_results", {}), "factory_profile": None},
+            "tools_used": ["get_factory_profile"],
+            "tool_errors": [{"tool": "get_factory_profile", "error": str(exc)}],
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +99,14 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
     tool_results = state.get("tool_results", {})
     messages = state["messages"]
 
-    tool_context = json.dumps(tool_results, indent=2, default=str) if tool_results else "No tool data available."
+    root_cause = state.get("root_cause")
+    if root_cause:
+        # Hotspot workflow: the grounded evidence replaces the raw tool dump.
+        tool_context = json.dumps(root_cause, indent=2, default=str)
+        workflow_rules = HOTSPOT_RESPONSE_RULES
+    else:
+        tool_context = json.dumps(tool_results, indent=2, default=str) if tool_results else "No tool data available."
+        workflow_rules = ""
 
     classification = state.get("intent_classification") or {}
     clarification_rule = (
@@ -110,7 +125,7 @@ Rules you MUST follow:
 2. If data is missing, say so explicitly.
 3. Label any simulated readings clearly as "simulated".
 4. Recommendations are decision-support, not guaranteed outcomes.
-5. Always include relevant assumptions or limitations.{clarification_rule}
+5. Always include relevant assumptions or limitations.{clarification_rule}{workflow_rules}
 
 Current intent: {intent}
 
@@ -126,15 +141,19 @@ Answer the user's question based on this data."""
 
     answer = response.content
 
-    # Extract assumptions heuristically — sentences containing certain keywords
-    assumption_keywords = ["estimated", "projected", "assumes", "based on available", "simulated"]
-    assumptions = [
-        sentence.strip()
-        for sentence in answer.split(".")
-        if any(kw in sentence.lower() for kw in assumption_keywords)
-    ]
-
-    confidence = "HIGH" if tool_results else "LOW"
+    if root_cause:
+        # Deterministic limitations from the root-cause step, not parsed from LLM text.
+        assumptions = [item["statement"] for item in root_cause["missing_information"]]
+        confidence = root_cause["confidence"]
+    else:
+        # Extract assumptions heuristically — sentences containing certain keywords
+        assumption_keywords = ["estimated", "projected", "assumes", "based on available", "simulated"]
+        assumptions = [
+            sentence.strip()
+            for sentence in answer.split(".")
+            if any(kw in sentence.lower() for kw in assumption_keywords)
+        ]
+        confidence = "HIGH" if tool_results else "LOW"
 
     logger.info("Generated response (intent=%s, confidence=%s)", intent, confidence)
 
