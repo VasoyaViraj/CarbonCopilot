@@ -85,3 +85,34 @@ describe('factory and process writes', () => {
     expect(prisma.process.delete).not.toHaveBeenCalled();
   });
 });
+
+describe('request field mapping', () => {
+  it('stores camelCase request fields in the snake_case columns', async () => {
+    asUser('FACTORY_OPERATOR');
+    const factory = await request(app)
+      .post('/api/factories')
+      .set('Authorization', bearer)
+      .send({ name: 'Plant', industryType: 'Metal', location: 'Pune', productionCapacity: 10000, productionUnit: 'tonnes/year' });
+    const process = await request(app)
+      .post('/api/factories/3/processes')
+      .set('Authorization', bearer)
+      .send({ name: 'Kiln', processType: 'THERMAL', description: 'Main kiln' });
+
+    expect(factory.status).toBe(201);
+    expect(process.status).toBe(201);
+    expect(prisma.factory.create).toHaveBeenCalledWith({
+      data: { name: 'Plant', industry_type: 'Metal', location: 'Pune', production_capacity: 10000, production_unit: 'tonnes/year', organization_id: 1 },
+    });
+    expect(prisma.process.create).toHaveBeenCalledWith({
+      data: { name: 'Kiln', process_type: 'THERMAL', description: 'Main kiln', factory_id: 3 },
+    });
+  });
+
+  it('leaves omitted fields untouched on partial updates', async () => {
+    asUser('FACTORY_OPERATOR');
+    await request(app).put('/api/factories/3').set('Authorization', bearer).send({ location: 'Mumbai' });
+
+    const { data } = prisma.factory.update.mock.calls[0][0];
+    expect(Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined))).toEqual({ location: 'Mumbai' });
+  });
+});
