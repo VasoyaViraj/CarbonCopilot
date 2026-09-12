@@ -30,6 +30,12 @@ export const round = (value, digits = 6) => {
   return Math.round(value * scale) / scale;
 };
 
+/** A stored emission in tCO2e, or null when there is none or its unit cannot be converted. */
+export const toTonnes = (emission) => {
+  const factor = CO2E_TO_TONNES[emission?.co2e_unit];
+  return factor == null ? null : emission.co2e_value * factor;
+};
+
 /** Share of a total as a percentage; 0 when the total is 0, never NaN. */
 export const percentOf = (part, total) => (total > 0 ? round((part / total) * 100, 2) : 0);
 

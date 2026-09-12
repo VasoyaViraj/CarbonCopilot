@@ -25,6 +25,14 @@ export const ACTIVITY_SOURCES = Object.freeze({
   SIMULATION: 'SIMULATION',
 });
 
+/** Human decision on a recommendation; the system only ever creates PENDING ones (BR-16). */
+export const RECOMMENDATION_STATUSES = Object.freeze({
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+  IMPLEMENTED: 'IMPLEMENTED',
+});
+
 /** Bucket sizes for the dashboard's historical emissions series. */
 export const HISTORY_GRANULARITIES = Object.freeze(['day', 'month']);
 

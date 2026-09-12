@@ -456,19 +456,91 @@ GET  /api/factories/:id/recommendations
 POST /api/factories/:id/recommendations/generate
 ```
 
-Response:
+Deterministic intervention scoring (FR-08, BR-06). No LLM produces a number: the AI may only explain a score that this service has already calculated. Every role may read recommendations. Generating them requires `ADMIN`, `FACTORY_OPERATOR` or `CONSULTANT`; `REGULATOR` gets `403`. Factories outside the organization return `404`.
+
+### Generate
+
+`POST /api/factories/:id/recommendations/generate` takes an empty body and returns `201`.
+
+1. **Baseline:** the factory's emissions over the trailing 12 months (365 days up to today, UTC).
+2. **Matching:** each circular alternative is matched, through a fixed rule table (`INTERVENTION_TARGETS`), to the emissions it replaces.
+   - `FACTORY`-scope alternatives cover an activity type across the whole factory, e.g. virgin aluminium → recycled aluminium, or natural gas → biogas.
+   - `PROCESS`-scope alternatives cover each matching process, e.g. furnace upgrades apply to processes named like a furnace, kiln or oven, and the boiler upgrade to boilers.
+   - Alternatives with no matching activity data are returned in `unmatchedAlternatives`, not recommended.
+3. **Estimates:** targeted emissions × the alternative's reduction % gives the CO2e avoided per year. Its share of the factory total is the estimated reduction.
+4. **Score:** each component is on a common 0–100 scale:
+   ```text
+   Score = 0.40 × Environmental Impact + 0.25 × Financial Benefit + 0.20 × Feasibility + 0.15 × Circularity
+   ```
+   | Component | 0–100 scale |
+   |---|---|
+   | Environmental Impact | Share of factory emissions avoided; 10% or more scores 100 |
+   | Financial Benefit | `100 × (1 − payback / 10 years)`; 0 when payback is unavailable (BR-09) |
+   | Feasibility | Mean of the implementation-difficulty and cost-level scores (LOW 100, MEDIUM 60, HIGH 20; an unspecified level scores 50) |
+   | Circularity | The knowledge base's circularity score |
+5. **Ranking:** highest score first. Ties go to the larger CO2e saving, then to the alternative and process name, so the same data always gives the same result.
+6. **Storage:** `PENDING` recommendations are replaced. Ones a person has already `ACCEPTED`, `REJECTED` or `IMPLEMENTED` are kept and never duplicated.
+
+```json
+{
+  "factory": { "id": 1, "name": "ABC Metal Manufacturing" },
+  "basis": { "from": "2025-09-13", "to": "2026-09-12", "factoryEmission": 24436.7, "co2eUnit": "tCO2e" },
+  "weights": { "environmentalImpact": 0.4, "financialBenefit": 0.25, "feasibility": 0.2, "circularity": 0.15 },
+  "assumptions": ["Annual estimates use the emissions recorded in the 12 months before the recommendations were generated.", "…"],
+  "created": 13,
+  "keptDecided": 0,
+  "unmatchedAlternatives": [{ "id": 6, "alternative": "Reusable packaging", "currentOption": "Single use packaging", "category": "reuse" }],
+  "recommendations": [Recommendation],
+  "warnings": []
+}
+```
+
+Warnings are `MISSING_EMISSIONS`, `UNSUPPORTED_CO2E_UNIT` and `NO_EMISSIONS` (nothing recorded in the window).
+
+### List
+
+`GET /api/factories/:id/recommendations?status=PENDING` returns `{ factory, generatedAt, weights, assumptions, recommendations }`, ranked the same way. `status` is optional.
+
+### Recommendation
+
 ```json
 {
   "id": 22,
-  "alternative": "Waste Heat Recovery",
-  "score": 91,
-  "estimatedReduction": 12,
+  "rank": 1,
+  "status": "PENDING",
+  "alternativeId": 1,
+  "alternative": "Recycled aluminum",
+  "currentOption": "Virgin aluminum",
+  "category": "material",
+  "description": "Replace a share of virgin aluminum with recycled aluminum feedstock.",
+  "scope": "FACTORY",
+  "processId": null,
+  "process": null,
+  "score": 84.3,
+  "scoreBreakdown": { "environmentalImpact": 100, "financialBenefit": 75, "feasibility": 60, "circularity": 90 },
+  "estimatedReduction": 14.12,
+  "reductionPercent": 15,
+  "estimatedSavings": 3450,
+  "savingsUnit": "tCO2e/yr",
   "estimatedCost": "MEDIUM",
-  "estimatedSavings": 50000,
-  "paybackPeriod": 2.4,
-  "reason": "Targets the largest thermal hotspot."
+  "implementationDifficulty": "MEDIUM",
+  "paybackPeriod": 2.5,
+  "circularityScore": 90,
+  "reason": "Virgin aluminium emissions total 23,000 tCO2e a year across the factory, mostly from Furnace (hotspot #1, 96.47% of factory emissions, CRITICAL). Recycled aluminum is estimated to cut them by 15%, avoiding about 3,450 tCO2e a year (14.12% of factory emissions).",
+  "assumptions": [],
+  "createdAt": "2026-09-12T10:00:00.000Z"
 }
 ```
+
+| Field | Meaning |
+|---|---|
+| `estimatedReduction` | Share of the factory's emissions avoided (%) |
+| `reductionPercent` | The alternative's reduction of the emissions it targets |
+| `estimatedSavings` | CO2e avoided per year |
+| `estimatedCost` | The knowledge base's cost level |
+| `paybackPeriod` | Years, or `null` when not available |
+| `assumptions` | Lists anything the knowledge base leaves unspecified (BR-11) |
+| `scoreBreakdown` | Recomputed from the stored inputs |
 
 ## 9. Scenarios
 
