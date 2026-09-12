@@ -29,3 +29,24 @@ export async function findEmissionFactor(category, fuelType, unit) {
 
   return factor;
 }
+
+/**
+ * 2. Validate compatible unit & Multiply quantity by factor.
+ * @param {number} quantity 
+ * @param {number} factorValue 
+ * @param {string} inputUnit 
+ * @param {string} factorUnit 
+ * @returns {number} The calculated CO2e value
+ */
+export function calculateEmissionValue(quantity, factorValue, inputUnit, factorUnit) {
+  if (quantity < 0) {
+    throw new Error('Quantity cannot be negative.');
+  }
+  
+  if (inputUnit !== factorUnit) {
+    throw new Error(`Incompatible units. Input unit: ${inputUnit}, Factor unit: ${factorUnit}`);
+  }
+
+  // Deterministic math
+  return quantity * factorValue;
+}
