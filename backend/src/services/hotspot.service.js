@@ -1,7 +1,8 @@
 // Deterministic process-level hotspot engine (FR-05, BR-03, BR-04). No ML and no LLM: processes
 // are ranked by their share of the factory's stored emissions and given a configurable severity.
 import { env } from '../config/env.js';
-import { percentOf, round } from './emissionAnalytics.service.js';
+import { ApiError } from '../utils/ApiError.js';
+import { describeFilters, loadFactoryActivities, percentOf, round, summarizeEmissions } from './emissionAnalytics.service.js';
 
 export const SEVERITIES = Object.freeze(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']);
 
@@ -55,4 +56,75 @@ export function rankHotspots(processes, thresholds = HOTSPOT_THRESHOLDS) {
       };
     });
   return { totalEmission: round(total), hotspots };
+}
+
+// Hotspots depend on emissions only, so production/intensity warnings are not relevant here.
+const EMISSION_WARNINGS = new Set(['MISSING_EMISSIONS', 'UNSUPPORTED_CO2E_UNIT']);
+
+// Ranks the per-process totals of the same aggregation the dashboard uses, so both screens agree.
+const rankSummary = (summary) =>
+  rankHotspots(
+    summary.byProcess.map(({ processId, process, co2e, activityCount }) => ({ processId, process, emission: co2e, activityCount }))
+  );
+
+/** Ranked hotspots of a factory the caller is already authorized for. Filters: from/to, source. */
+export async function getHotspots(factory, query) {
+  const { activities, processes } = await loadFactoryActivities(factory, query);
+  const summary = summarizeEmissions({ activities, processes });
+  const { totalEmission, hotspots } = rankSummary(summary);
+
+  return {
+    factory: { id: factory.id, name: factory.name },
+    filters: describeFilters(query),
+    co2eUnit: summary.co2eUnit,
+    totalEmission,
+    activityCount: summary.totals.activityCount,
+    emissionCount: summary.totals.emissionCount,
+    thresholds: HOTSPOT_THRESHOLDS,
+    hotspots,
+    warnings: summary.warnings.filter((warning) => EMISSION_WARNINGS.has(warning.code)),
+  };
+}
+
+/**
+ * One process's hotspot position plus what drives it: its emissions per source (share of the
+ * process total), history, production and intensity. 404 when the process is not in the factory.
+ */
+export async function getHotspotDetail(factory, processId, query) {
+  const { activities, processes } = await loadFactoryActivities(factory, query);
+  const process = processes.find((entry) => entry.id === processId);
+  if (!process) throw ApiError.notFound('Process');
+
+  const { totalEmission, hotspots } = rankSummary(summarizeEmissions({ activities, processes }));
+  const own = summarizeEmissions({
+    activities: activities.filter((activity) => activity.process_id === processId),
+    processes: [process],
+    from: query.from,
+    to: query.to,
+  });
+
+  return {
+    factory: { id: factory.id, name: factory.name },
+    filters: describeFilters(query),
+    co2eUnit: own.co2eUnit,
+    process: {
+      id: process.id,
+      name: process.name,
+      processType: process.process_type ?? null,
+      description: process.description ?? null,
+    },
+    // null when the factory has no emissions to rank in this period.
+    hotspot: hotspots.find((entry) => entry.processId === processId) ?? null,
+    factoryTotalEmission: totalEmission,
+    rankedProcessCount: hotspots.length,
+    thresholds: HOTSPOT_THRESHOLDS,
+    emission: own.totals.co2e,
+    simulatedEmission: own.totals.simulatedCo2e,
+    activityCount: own.totals.activityCount,
+    drivers: own.bySource,
+    history: own.history,
+    production: own.production,
+    intensity: own.intensity,
+    warnings: own.warnings,
+  };
 }
