@@ -30,6 +30,12 @@ from app.agents.recommendation_workflow import (
     rank_interventions_node,
     route_after_factory_data_rec,
 )
+from app.agents.scenario_workflow import (
+    PARSE_INTERVENTIONS,
+    RUN_SCENARIO,
+    parse_intervention_parameters,
+    run_scenario,
+)
 from app.agents.intent_router import GENERATE_RESPONSE, LOAD_FACTORY_DATA, Intent, route_intent
 from app.agents.state import AgentState
 from app.agents.nodes import classify_intent, load_factory_data, generate_response
@@ -49,6 +55,8 @@ def _route_after_factory_data(state: AgentState) -> str:
         return CALCULATE_EMISSIONS
     if intent == Intent.RECOMMENDATION.value:
         return FETCH_HOTSPOTS
+    if intent == Intent.SCENARIO.value:
+        return PARSE_INTERVENTIONS
     return GENERATE_RESPONSE
 
 
@@ -75,6 +83,10 @@ def _build_graph() -> StateGraph:
     builder.add_node(CALCULATE_IMPACT, calculate_impact)
     builder.add_node(RANK_INTERVENTIONS, rank_interventions_node)
 
+    # Scenario workflow
+    builder.add_node(PARSE_INTERVENTIONS, parse_intervention_parameters)
+    builder.add_node(RUN_SCENARIO, run_scenario)
+
     # -----------------------------------------------------------------------
     # Edges
     # -----------------------------------------------------------------------
@@ -92,6 +104,7 @@ def _build_graph() -> StateGraph:
         {
             CALCULATE_EMISSIONS: CALCULATE_EMISSIONS,
             FETCH_HOTSPOTS: FETCH_HOTSPOTS,
+            PARSE_INTERVENTIONS: PARSE_INTERVENTIONS,
             GENERATE_RESPONSE: GENERATE_RESPONSE,
         },
     )
@@ -106,6 +119,10 @@ def _build_graph() -> StateGraph:
     builder.add_edge(FETCH_ALTERNATIVES, CALCULATE_IMPACT)
     builder.add_edge(CALCULATE_IMPACT, RANK_INTERVENTIONS)
     builder.add_edge(RANK_INTERVENTIONS, GENERATE_RESPONSE)
+
+    # Scenario workflow chain
+    builder.add_edge(PARSE_INTERVENTIONS, RUN_SCENARIO)
+    builder.add_edge(RUN_SCENARIO, GENERATE_RESPONSE)
 
     builder.add_edge(GENERATE_RESPONSE, END)
 

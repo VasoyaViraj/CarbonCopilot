@@ -18,6 +18,7 @@ from langchain_core.messages import AIMessage, SystemMessage
 from app.agents.hotspot_workflow import HOTSPOT_RESPONSE_RULES
 from app.agents.intent_router import Intent, classify_message, last_user_message
 from app.agents.recommendation_workflow import build_recommendation_evidence
+from app.agents.scenario_workflow import build_scenario_evidence
 from app.agents.state import AgentState
 from app.services.llm import get_llm
 
@@ -102,6 +103,18 @@ Recommendation workflow rules:
 - Never invent interventions, numbers or alternatives not present in the list.
 - Mention all items in missing_information."""
 
+# Response rules injected when the scenario workflow has run.
+SCENARIO_RESPONSE_RULES = """
+
+Scenario workflow rules:
+- The scenario values below are the ONLY source of baseline, projected, reduction and financial figures. Quote them exactly.
+- Use the wording "projected" and "estimated" throughout — never guarantee outcomes.
+- If needs_clarification is true, do NOT present any numbers; instead ask the clarification_question.
+- If baseline_emission is zero or unavailable, say the factory has no recorded emissions and a scenario cannot be calculated.
+- payback_period of 'N/A' means annual savings are unavailable — state this clearly.
+- Never invent percentages, costs or savings not present in the data.
+- Mention all items in missing_information and assumptions."""
+
 
 def generate_response(state: AgentState) -> Dict[str, Any]:
     """Generate the final natural-language answer.
@@ -135,6 +148,14 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
         workflow_rules = RECOMMENDATION_RESPONSE_RULES
         evidence_assumptions = rec_evidence.assumptions + rec_evidence.missing_information
         evidence_confidence = rec_evidence.confidence.value
+
+    elif intent == Intent.SCENARIO.value and "scenario_result" in tool_results:
+        # Scenario workflow: build grounded evidence from deterministic engine output.
+        scen_evidence = build_scenario_evidence(tool_results, tool_errors)
+        tool_context = json.dumps(scen_evidence.model_dump(mode="json"), indent=2, default=str)
+        workflow_rules = SCENARIO_RESPONSE_RULES
+        evidence_assumptions = scen_evidence.assumptions + scen_evidence.missing_information
+        evidence_confidence = scen_evidence.confidence.value
 
     else:
         tool_context = json.dumps(tool_results, indent=2, default=str) if tool_results else "No tool data available."
