@@ -1,0 +1,208 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Organization {
+  id            Int      @id @default(autoincrement())
+  name          String
+  industry_type String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  users     User[]
+  factories Factory[]
+
+  @@map("organizations")
+}
+
+model User {
+  id              Int      @id @default(autoincrement())
+  organization_id Int?
+  name            String
+  email           String   @unique
+  password_hash   String
+  role            String   @default("FACTORY_OPERATOR")
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organization_id], references: [id])
+
+  @@map("users")
+}
+
+model Factory {
+  id                  Int      @id @default(autoincrement())
+  organization_id     Int
+  name                String
+  location            String?
+  production_capacity Float?
+  production_unit     String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  organization    Organization     @relation(fields: [organization_id], references: [id])
+  processes       Process[]
+  materials       Material[]
+  wastes          Waste[]
+  recommendations Recommendation[]
+  scenarios       Scenario[]
+
+  @@map("factories")
+}
+
+model Process {
+  id           Int      @id @default(autoincrement())
+  factory_id   Int
+  name         String
+  process_type String?
+  description  String?
+  created_at   DateTime @default(now())
+
+  factory    Factory    @relation(fields: [factory_id], references: [id])
+  activities Activity[]
+  wastes     Waste[]
+
+  @@map("processes")
+}
+
+model Activity {
+  id                  Int      @id @default(autoincrement())
+  process_id          Int
+  activity_date       DateTime
+  energy_type         String
+  quantity            Float
+  unit                String
+  production_quantity Float?
+  production_unit     String?
+  source              String?  @default("MANUAL") // MANUAL, CSV, SIMULATION
+  created_at          DateTime @default(now())
+
+  process   Process    @relation(fields: [process_id], references: [id])
+  emissions Emission[]
+
+  @@map("activities")
+}
+
+model EmissionFactor {
+  id         Int      @id @default(autoincrement())
+  category   String
+  source     String?
+  fuel_type  String?
+  unit       String
+  factor     Float
+  region     String?
+  year       Int?
+  reference  String?
+  created_at DateTime @default(now())
+
+  emissions Emission[]
+
+  @@map("emission_factors")
+}
+
+model Emission {
+  id                 Int      @id @default(autoincrement())
+  activity_id        Int
+  emission_factor_id Int
+  co2e_value         Float
+  co2e_unit          String   @default("tCO2e")
+  calculation_method String?
+  calculated_at      DateTime @default(now())
+
+  activity        Activity       @relation(fields: [activity_id], references: [id])
+  emission_factor EmissionFactor @relation(fields: [emission_factor_id], references: [id])
+
+  @@map("emissions")
+}
+
+model Material {
+  id            Int      @id @default(autoincrement())
+  factory_id    Int
+  name          String
+  category      String?
+  material_type String?
+  quantity      Float
+  unit          String
+  created_at    DateTime @default(now())
+
+  factory Factory @relation(fields: [factory_id], references: [id])
+
+  @@map("materials")
+}
+
+model Waste {
+  id              Int      @id @default(autoincrement())
+  factory_id      Int
+  process_id      Int
+  waste_type      String
+  quantity        Float
+  unit            String
+  disposal_method String?
+  created_at      DateTime @default(now())
+
+  factory Factory @relation(fields: [factory_id], references: [id])
+  process Process @relation(fields: [process_id], references: [id])
+
+  @@map("waste")
+}
+
+model CircularAlternative {
+  id                        Int      @id @default(autoincrement())
+  category                  String
+  current_option            String
+  alternative_option        String
+  description               String?
+  reduction_percent         Float?
+  cost_level                String?
+  implementation_difficulty String?
+  estimated_payback_years   Float?
+  circularity_score         Float?
+  created_at                DateTime @default(now())
+
+  recommendations Recommendation[]
+
+  @@map("circular_alternatives")
+}
+
+model Recommendation {
+  id                  Int      @id @default(autoincrement())
+  factory_id          Int
+  process_id          Int?
+  alternative_id      Int
+  score               Float?
+  estimated_reduction Float?
+  estimated_cost      Float?
+  estimated_savings   Float?
+  payback_period      Float?
+  reason              String?
+  status              String?  @default("PENDING")
+  created_at          DateTime @default(now())
+
+  factory     Factory             @relation(fields: [factory_id], references: [id])
+  alternative CircularAlternative @relation(fields: [alternative_id], references: [id])
+
+  @@map("recommendations")
+}
+
+model Scenario {
+  id                 Int      @id @default(autoincrement())
+  factory_id         Int
+  name               String
+  description        String?
+  baseline_emission  Float?
+  projected_emission Float?
+  reduction_amount   Float?
+  reduction_percent  Float?
+  estimated_cost     Float?
+  estimated_savings  Float?
+  payback_period     Float?
+  created_at         DateTime @default(now())
+
+  factory Factory @relation(fields: [factory_id], references: [id])
+
+  @@map("scenarios")
+}
