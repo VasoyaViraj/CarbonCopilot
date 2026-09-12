@@ -76,9 +76,15 @@ Request:
   "name": "Operator",
   "email": "operator@example.com",
   "password": "********",
-  "role": "FACTORY_OPERATOR"
+  "role": "FACTORY_OPERATOR",
+  "organizationName": "ABC Metal Manufacturing"
 }
 ```
+
+- `role`: `FACTORY_OPERATOR` (default), `CONSULTANT`, or `REGULATOR`. `ADMIN` cannot be self-assigned.
+- Registration always creates a **new organization** for the user; clients cannot supply an organization ID.
+- Password: 8–72 characters. Unknown fields are rejected.
+- `201` with the same body as login; `409 CONFLICT` if the email exists.
 
 ### Login
 ```http
@@ -88,18 +94,35 @@ POST /api/auth/login
 Response:
 ```json
 {
-  "accessToken": "...",
-  "user": {
-    "id": 1,
-    "role": "FACTORY_OPERATOR"
+  "success": true,
+  "data": {
+    "accessToken": "...",
+    "user": {
+      "id": 1,
+      "name": "Operator",
+      "email": "operator@example.com",
+      "role": "FACTORY_OPERATOR",
+      "organizationId": 1
+    }
   }
 }
 ```
+
+Wrong email or password both return `401 INVALID_CREDENTIALS`. The token is also set as an `httpOnly` cookie; clients should send it as `Authorization: Bearer <token>`.
 
 ### Current User
 ```http
 GET /api/auth/me
 ```
+
+Returns `{ "success": true, "data": { "user": { ... } } }`. The user is re-loaded from the database on every request, so role changes and deletions apply immediately; missing, tampered, or expired tokens return `401 UNAUTHENTICATED`.
+
+### Logout
+```http
+POST /api/auth/logout
+```
+
+Clears the auth cookie. Clients also discard their stored token.
 
 ## 3. Factories
 
