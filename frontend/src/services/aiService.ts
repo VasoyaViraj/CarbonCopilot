@@ -1,4 +1,5 @@
 import { apiClient, type ApiSuccess } from "@/services/apiClient"
+import type { ChatMessage } from "@/types/domain"
 
 /** AI answers can take longer than ordinary API calls; Express enforces its own AI timeout. */
 const AI_REQUEST_TIMEOUT_MS = 60_000
@@ -71,6 +72,12 @@ export type CopilotResponse = {
   confidence: ConfidenceLevel
   intent: string | null
   actionPlan: ActionPlan | null
+  conversationId: number | null
+}
+
+export type CopilotHistory = {
+  conversationId: number | null
+  messages: ChatMessage[]
 }
 
 export const ACTION_PLAN_PROMPT = "Generate an action plan."
@@ -82,6 +89,11 @@ export const aiService = {
       { factoryId, message, ...(conversationId ? { conversationId } : {}) },
       { timeout: AI_REQUEST_TIMEOUT_MS }
     )
+    return res.data.data
+  },
+
+  async getHistory(factoryId: number): Promise<CopilotHistory> {
+    const res = await apiClient.get<ApiSuccess<CopilotHistory>>(`/factories/${factoryId}/ai/history`)
     return res.data.data
   },
 }

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Link } from "react-router"
 import { Factory as FactoryIcon } from "lucide-react"
 import PageHeader from "@/components/PageHeader"
@@ -27,14 +27,53 @@ const nextId = (prefix: string) => `${prefix}-${Date.now()}-${++messageSeq}`
 
 export default function CopilotPage() {
   const { status, error, factories, factory, selectFactory, reload } = useFactorySelection()
+  type FactoryState = {
+    conversationId: number | null
+    messages: ChatMessage[]
+    status: "idle" | "loading" | "error"
+  }
   // One conversation per factory, so answers never mix factories.
-  const [conversations, setConversations] = useState<Record<number, ChatMessage[]>>({})
+  const [conversations, setConversations] = useState<Record<number, FactoryState>>({})
   const [pendingFactoryId, setPendingFactoryId] = useState<number | null>(null)
   const factoryId = factory?.id ?? null
-  const messages = factoryId ? (conversations[factoryId] ?? []) : []
+  
+  const activeState = factoryId ? conversations[factoryId] : null
+  const messages = activeState?.messages ?? []
+  const historyLoading = activeState?.status === "loading"
+
+  useEffect(() => {
+    if (!factoryId || conversations[factoryId]) return
+    
+    setConversations((prev) => ({
+      ...prev,
+      [factoryId]: { conversationId: null, messages: [], status: "loading" },
+    }))
+
+    aiService.getHistory(factoryId).then(
+      (history) => {
+        setConversations((prev) => ({
+          ...prev,
+          [factoryId]: { conversationId: history.conversationId, messages: history.messages, status: "idle" },
+        }))
+      },
+      (err) => {
+        setConversations((prev) => ({
+          ...prev,
+          [factoryId]: { 
+            conversationId: null, 
+            messages: [{ id: nextId("e"), role: "system", content: getApiErrorMessage(err, "Failed to load conversation history.") }], 
+            status: "error" 
+          },
+        }))
+      }
+    )
+  }, [factoryId])
 
   const append = (id: number, ...added: ChatMessage[]) =>
-    setConversations((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), ...added] }))
+    setConversations((prev) => {
+      const state = prev[id] || { conversationId: null, messages: [], status: "idle" }
+      return { ...prev, [id]: { ...state, messages: [...state.messages, ...added] } }
+    })
 
   async function onSend(text: string) {
     if (!factoryId) return
@@ -42,8 +81,20 @@ export default function CopilotPage() {
     append(id, { id: nextId("u"), role: "user", content: text })
     setPendingFactoryId(id)
     try {
-      const response = await aiService.askCopilot(id, text)
-      append(id, { id: nextId("a"), role: "assistant", content: response.answer, response })
+      const state = conversations[id]
+      const response = await aiService.askCopilot(id, text, state?.conversationId)
+      
+      setConversations((prev) => {
+        const s = prev[id] || { conversationId: null, messages: [], status: "idle" }
+        return {
+          ...prev,
+          [id]: {
+            ...s,
+            conversationId: response.conversationId ?? s.conversationId,
+            messages: [...s.messages, { id: nextId("a"), role: "assistant", content: response.answer, response }],
+          },
+        }
+      })
     } catch (err) {
       append(id, {
         id: nextId("e"),
@@ -80,7 +131,7 @@ export default function CopilotPage() {
       <ChatWindow
         messages={messages}
         onSend={onSend}
-        loading={pendingFactoryId === factory.id}
+        loading={historyLoading || pendingFactoryId === factory.id}
         suggestions={SUGGESTIONS}
         renderContent={(message) => (message.response ? <AiAnswer response={message.response} /> : undefined)}
         footerNote={`Answers use ${factory.name}'s available data and deterministic tool results — estimates and decision support, not guaranteed outcomes.`}
