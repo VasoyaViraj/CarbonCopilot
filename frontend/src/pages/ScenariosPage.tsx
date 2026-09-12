@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { Bookmark, Calculator, SlidersHorizontal } from "lucide-react"
+import { Link } from "react-router"
+import { Bookmark, Calculator, Factory as FactoryIcon, Lock, SlidersHorizontal } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 
 import PageHeader from "@/components/PageHeader"
@@ -9,14 +10,16 @@ import EmptyState from "@/components/feedback/EmptyState"
 import ErrorState from "@/components/feedback/ErrorState"
 import LoadingState from "@/components/feedback/LoadingState"
 import FactorySelect from "@/components/FactorySelect"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 
+import { useAuth } from "@/hooks/useAuth"
 import { useFactorySelection } from "@/hooks/useFactorySelection"
 import { useSavedScenarios } from "@/hooks/useSavedScenarios"
 import { useScenario } from "@/hooks/useScenario"
 import { formatNumber, formatPercent, formatYears } from "@/utils/format"
+import { ANALYSIS_RUNNERS, ROLE_LABELS } from "@/utils/roles"
 
 const LEVERS = [
   { id: "recycledMaterialPercent", label: "Recycled material", description: "Share of virgin material replaced by recycled input." },
@@ -30,7 +33,10 @@ type LeverId = (typeof LEVERS)[number]["id"]
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })
 
 export default function ScenariosPage() {
-  const { factory, factories, selectFactory } = useFactorySelection()
+  const { status, error: factoriesError, factories, factory, selectFactory, reload } = useFactorySelection()
+  const { user } = useAuth()
+  // Saving is an analysis action; regulators review saved scenarios read-only.
+  const canSave = !!user && ANALYSIS_RUNNERS.includes(user.role)
 
   const [levers, setLevers] = useState<Record<LeverId, number>>({
     recycledMaterialPercent: 0,
@@ -81,6 +87,35 @@ export default function ScenariosPage() {
       },
     ]
   }, [result])
+
+  if (status !== "ready" || !factory) {
+    return (
+      <>
+        <PageHeader
+          title="What-if Simulator"
+          description="Adjust intervention assumptions and compare projected emissions against your baseline. Baseline data is never modified."
+        />
+        {status === "loading" ? (
+          <LoadingState label="Loading factories…" />
+        ) : status === "error" ? (
+          <ErrorState message={factoriesError ?? undefined} onRetry={reload} />
+        ) : (
+          <Card>
+            <EmptyState
+              icon={FactoryIcon}
+              title="Set up a factory first"
+              description="Scenarios project interventions against a factory's recorded baseline emissions."
+              action={
+                <Link to="/factory" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                  Open Factory Setup
+                </Link>
+              }
+            />
+          </Card>
+        )}
+      </>
+    )
+  }
 
   return (
     <>
@@ -187,6 +222,14 @@ export default function ScenariosPage() {
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          {!canSave && user ? (
+            <div className="flex items-start gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+              <Lock className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>
+                Your role ({ROLE_LABELS[user.role]}) can review saved scenarios. Admins, factory operators and consultants can save them.
+              </span>
+            </div>
+          ) : (
           <form onSubmit={handleSave} className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Input
               value={scenarioName}
@@ -205,6 +248,7 @@ export default function ScenariosPage() {
               {saved.saving ? "Saving…" : "Save current scenario"}
             </Button>
           </form>
+          )}
           {saved.saveError && <p className="text-sm text-destructive">{saved.saveError}</p>}
           {savedName && !saved.saveError && <p className="text-sm text-muted-foreground">Saved “{savedName}”.</p>}
 

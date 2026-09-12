@@ -63,11 +63,12 @@ def build_copilot_response(state: Dict[str, Any]) -> CopilotResponse:
             RecommendationItem(
                 rank=item["rank"],
                 name=item.get("name") or "Unnamed intervention",
-                reduction_percent=item.get("reduction_percent"),
+                # Share of factory emissions the intervention is estimated to avoid
+                reduction_percent=item.get("estimated_reduction_percent"),
                 cost_level=item.get("cost_level"),
-                payback_years=item.get("estimated_payback_years"),
+                payback_years=item.get("payback_years"),
                 score=item.get("score"),
-                reason=item.get("description"),
+                reason=item.get("reason"),
             )
             for item in evidence.interventions
             if item.get("rank") is not None

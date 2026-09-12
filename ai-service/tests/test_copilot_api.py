@@ -136,13 +136,14 @@ class BuildCopilotResponseTest(unittest.TestCase):
         response = copilot.build_copilot_response({
             "intent": "RECOMMENDATION",
             "tool_results": {"ranked_interventions": [
-                {"rank": 1, "alternative_option": "Waste heat recovery", "reduction_percent": 12, "cost_level": "MEDIUM",
-                 "estimated_payback_years": 2.4, "score": 91},
+                {"rank": 1, "name": "Waste heat recovery", "estimated_reduction_percent": 12, "cost_level": "MEDIUM",
+                 "payback_years": 2.4, "score": 91, "reason": "Targets Furnace heat losses."},
             ]},
             "confidence": "HIGH",
         })
-        self.assertEqual(response.recommendations[0].name, "Waste heat recovery")
-        self.assertEqual(response.recommendations[0].payback_years, 2.4)
+        item = response.recommendations[0]
+        self.assertEqual((item.name, item.reduction_percent, item.payback_years, item.score), ("Waste heat recovery", 12, 2.4, 91))
+        self.assertEqual(item.reason, "Targets Furnace heat losses.")
 
     def test_unknown_confidence_is_unavailable(self):
         self.assertEqual(copilot.build_copilot_response({"confidence": None}).confidence, ConfidenceLevel.UNAVAILABLE)

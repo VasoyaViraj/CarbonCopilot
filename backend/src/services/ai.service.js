@@ -31,6 +31,18 @@ function toCopilotResponse(body) {
   };
 }
 
+/**
+ * A client-supplied conversation must be the caller's own conversation about this factory.
+ * Anything else is reported as NOT_FOUND so other users' conversations are not disclosed (BR-13).
+ */
+async function assertConversationOwner({ user, factory, conversationId }) {
+  const conversation = await prisma.aiConversation.findFirst({
+    where: { id: conversationId, user_id: user.id, factory_id: factory.id },
+    select: { id: true },
+  });
+  if (!conversation) throw ApiError.notFound('Conversation');
+}
+
 const timeoutError = () =>
   new ApiError(504, 'AI_TIMEOUT', 'The AI Copilot took too long to respond. Please try again.');
 const aiError = () => new ApiError(502, 'AI_ERROR', 'The AI Copilot could not answer this request.');
@@ -41,6 +53,8 @@ const aiError = () => new ApiError(502, 'AI_ERROR', 'The AI Copilot could not an
  */
 export async function askCopilot({ user, factory, message, conversationId }) {
   if (!env.AI_SERVICE_TOKEN) throw ApiError.serviceUnavailable('The AI Copilot is not configured on this server.');
+  // Checked before the AI call, so a foreign conversation is never answered or written to.
+  if (conversationId != null) await assertConversationOwner({ user, factory, conversationId });
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), env.AI_TIMEOUT_MS);

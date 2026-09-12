@@ -7,6 +7,9 @@ export const ROLE_LABELS: Record<Role, string> = {
   REGULATOR: "Regulator / auditor",
 }
 
+/** Mirrors the backend's MANAGE_FACTORIES group (factory and process configuration); the API remains authoritative. */
+export const FACTORY_MANAGERS: Role[] = ["ADMIN", "FACTORY_OPERATOR"]
+
 /** Mirrors the backend's WRITE_OPERATIONAL_DATA group for UI affordances; the API remains authoritative. */
 export const OPERATIONAL_DATA_WRITERS: Role[] = ["ADMIN", "FACTORY_OPERATOR"]
 

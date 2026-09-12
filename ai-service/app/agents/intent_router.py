@@ -120,6 +120,9 @@ _RULES: List[Tuple[Intent, List[str]]] = [
             r"\bintervention(s)?\b",
             r"\bcircular\s+(alternative|option|economy|solution)s?\b",
             r"\bhow\s+(can|do|could)\s+(i|we)\s+(reduce|lower|cut)\b",
+            r"\b(roi|return\s+on\s+investment)\b",
+            r"\b(best|quickest|fastest|shortest)\s+(payback|value|return)\b",
+            r"\bcheapest\s+(option|fix|intervention|way)\b",
         ],
     ),
     (
