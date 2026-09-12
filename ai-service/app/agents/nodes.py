@@ -11,7 +11,7 @@ Rules (from ADR-003 / BUSINESS_RULES):
 
 import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from langchain_core.messages import AIMessage, SystemMessage
 
@@ -116,6 +116,111 @@ Scenario workflow rules:
 - Never invent percentages, costs or savings not present in the data.
 - Mention all items in missing_information and assumptions."""
 
+# Leads every answer produced without the LLM (no digits, so it never adds a number).
+LLM_UNAVAILABLE_NOTE = (
+    "_The AI explanation service is unavailable right now, so this answer lists the deterministic tool "
+    "results directly. Nothing has been estimated beyond them._"
+)
+
+
+def _fmt(value: Any) -> str:
+    """Render a tool value exactly as returned, without a trailing .0."""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return "N/A" if value is None else str(value)
+
+
+def _bullets(items: List[str]) -> str:
+    return "\n".join(f"- {item}" for item in items)
+
+
+def _recommendation_line(item: Dict[str, Any]) -> str:
+    details = [f"score {_fmt(item['score'])}"] if item.get("score") is not None else []
+    if item.get("estimated_savings") is not None:
+        saving = f"estimated {_fmt(item['estimated_savings'])} {item.get('savings_unit') or ''}".rstrip() + " avoided"
+        if item.get("estimated_reduction_percent") is not None:
+            saving += f" ({_fmt(item['estimated_reduction_percent'])}% of factory emissions)"
+        details.append(saving)
+    if item.get("cost_level"):
+        details.append(f"cost {item['cost_level']}")
+    payback = item.get("payback_years")
+    details.append(f"projected payback {_fmt(payback)} years" if payback is not None else "projected payback N/A")
+    target = f" ({item['target']})" if item.get("target") else ""
+    return f"**#{_fmt(item.get('rank'))} {item.get('name')}**{target} — " + "; ".join(details)
+
+
+def _fallback_answer(kind: str, evidence: Dict[str, Any], tool_results: Dict[str, Any], classification: Dict[str, Any]) -> str:
+    """Answer from the grounded evidence alone when the LLM cannot be reached. Copies values only."""
+    parts = [LLM_UNAVAILABLE_NOTE]
+    missing = evidence.get("missing_information") or []
+
+    if kind == "hotspot":
+        for title, key in (
+            ("Actual factory data", "factory_data"),
+            ("Derived metrics", "derived_metrics"),
+            ("Hypotheses", "hypotheses"),
+            ("Missing information", "missing_information"),
+        ):
+            statements = [item["statement"] for item in evidence.get(key) or []]
+            parts.append(f"### {title}\n" + (_bullets(statements) if statements else "- Nothing recorded."))
+        return "\n\n".join(parts)
+
+    if kind == "recommendation":
+        lines = [_recommendation_line(item) for item in evidence.get("interventions") or []]
+        parts.append("### Ranked interventions\n" + _bullets(lines) if lines else "No ranked interventions are available.")
+    elif kind == "scenario":
+        if evidence.get("needs_clarification"):
+            parts.append(evidence.get("clarification_question") or "Which intervention percentages would you like to test?")
+            return "\n\n".join(parts)
+        unit = evidence.get("co2e_unit") or "tCO2e"
+        lines = []
+        if evidence.get("projected_emission") is not None and evidence.get("baseline_emission") is not None:
+            lines.append(
+                f"Projected emissions: {_fmt(evidence['projected_emission'])} {unit} against a baseline of "
+                f"{_fmt(evidence['baseline_emission'])} {unit}."
+            )
+        if evidence.get("reduction_amount") is not None:
+            percent = evidence.get("reduction_percent")
+            lines.append(
+                f"Projected reduction: {_fmt(evidence['reduction_amount'])} {unit}"
+                + (f" ({_fmt(percent)}%)" if percent is not None else "")
+                + "."
+            )
+        if evidence.get("estimated_cost") is not None:
+            lines.append(f"Estimated cost: ${_fmt(evidence['estimated_cost'])}.")
+        if evidence.get("estimated_savings") is not None:
+            lines.append(f"Estimated savings: ${_fmt(evidence['estimated_savings'])}.")
+        payback = evidence.get("payback_period")
+        lines.append(f"Projected payback: {payback} years." if payback and payback != "N/A" else "Projected payback: N/A.")
+        parts.append(_bullets(lines))
+    elif kind == "factory":
+        profile = tool_results.get("factory_profile")
+        if profile:
+            capacity = profile.get("production_capacity")
+            facts = [f"Factory: {profile.get('name')}"]
+            if profile.get("industry_type"):
+                facts.append(f"Industry: {profile['industry_type']}")
+            if profile.get("location"):
+                facts.append(f"Location: {profile['location']}")
+            if capacity is not None:
+                facts.append(f"Production capacity: {_fmt(capacity)} {profile.get('production_unit') or ''}".rstrip())
+            if profile.get("process_count") is not None:
+                facts.append(f"Configured processes: {_fmt(profile['process_count'])}")
+            parts.append(_bullets(facts))
+        else:
+            parts.append("The factory profile could not be loaded, so nothing can be said about the factory right now.")
+    elif classification.get("needs_clarification"):
+        parts.append("Could you say what you would like to analyse: hotspots, recommendations, a what-if scenario or an action plan?")
+    else:
+        parts.append(
+            "General questions need the AI explanation service. Please try again shortly, or ask about your "
+            "factory's hotspots, recommendations, what-if scenarios or action plan."
+        )
+
+    if missing:
+        parts.append("### Missing information\n" + _bullets(missing))
+    return "\n\n".join(parts)
+
 
 def generate_response(state: AgentState) -> Dict[str, Any]:
     """Generate the final natural-language answer.
@@ -154,6 +259,7 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
         workflow_rules = HOTSPOT_RESPONSE_RULES
         evidence_assumptions = [item["statement"] for item in root_cause.get("missing_information", [])]
         evidence_confidence = root_cause.get("confidence", "MEDIUM")
+        fallback_kind, fallback_evidence = "hotspot", root_cause
 
     elif intent == Intent.RECOMMENDATION.value and tool_results.get("ranked_interventions") is not None:
         # Recommendation workflow: build grounded evidence, give LLM a clean structure.
@@ -162,20 +268,26 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
         workflow_rules = RECOMMENDATION_RESPONSE_RULES
         evidence_assumptions = rec_evidence.assumptions + rec_evidence.missing_information
         evidence_confidence = rec_evidence.confidence.value
+        fallback_kind, fallback_evidence = "recommendation", rec_evidence.model_dump(mode="json")
 
-    elif intent == Intent.SCENARIO.value and "scenario_result" in tool_results:
+    elif intent == Intent.SCENARIO.value and (
+        "scenario_result" in tool_results or tool_results.get("scenario_needs_clarification")
+    ):
         # Scenario workflow: build grounded evidence from deterministic engine output.
         scen_evidence = build_scenario_evidence(tool_results, tool_errors)
         tool_context = json.dumps(scen_evidence.model_dump(mode="json"), indent=2, default=str)
         workflow_rules = SCENARIO_RESPONSE_RULES
         evidence_assumptions = scen_evidence.assumptions + scen_evidence.missing_information
         evidence_confidence = scen_evidence.confidence.value
+        fallback_kind, fallback_evidence = "scenario", scen_evidence.model_dump(mode="json")
 
     else:
         tool_context = json.dumps(tool_results, indent=2, default=str) if tool_results else "No tool data available."
         workflow_rules = ""
         evidence_assumptions = None
         evidence_confidence = None
+        fallback_kind = "factory" if "factory_profile" in tool_results else "general"
+        fallback_evidence = {}
 
     classification = state.get("intent_classification") or {}
     clarification_rule = (
@@ -203,16 +315,22 @@ Tool results (calculated by deterministic services):
 
 Answer the user's question based on this data."""
 
-    llm = get_llm()
-    response = llm.invoke(
-        [SystemMessage(content=system_prompt)] + messages
-    )
-
-    answer = response.content
+    llm_failed = False
+    try:
+        llm = get_llm()
+        answer = llm.invoke([SystemMessage(content=system_prompt)] + messages).content
+    except Exception as exc:
+        # Never guess: answer from the grounded evidence alone.
+        logger.warning("LLM unavailable for the response (%s); answering from tool results.", exc)
+        answer = _fallback_answer(fallback_kind, fallback_evidence, tool_results, classification)
+        llm_failed = True
 
     if evidence_assumptions is not None:
         assumptions = evidence_assumptions
         confidence = evidence_confidence
+    elif llm_failed:
+        assumptions = []
+        confidence = "LOW" if fallback_kind == "factory" and tool_results.get("factory_profile") else "UNAVAILABLE"
     else:
         assumption_keywords = ["estimated", "projected", "assumes", "based on available", "simulated"]
         assumptions = [

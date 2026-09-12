@@ -18,6 +18,7 @@ Example user message:
 
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -116,10 +117,37 @@ class ParsedInterventions(BaseModel):
         )
 
 
+_PERCENT = re.compile(r"(\d+(?:\.\d+)?)\s*(?:%|percent\b)", re.IGNORECASE)
+_LEVER_KEYWORDS = [
+    ("recycled_material_percent", re.compile(r"\brecycl", re.IGNORECASE)),
+    ("waste_recovery_percent", re.compile(r"\bwaste\b", re.IGNORECASE)),
+    ("fuel_replacement_percent", re.compile(r"\b(fuel|biogas|biomass|hydrogen|natural\s+gas|diesel|lpg)\b", re.IGNORECASE)),
+    ("energy_efficiency_percent", re.compile(r"\befficien", re.IGNORECASE)),
+]
+
+
+def parse_parameters_by_rules(message: str) -> Optional[ParsedInterventions]:
+    """Deterministic fallback for when the LLM is unavailable.
+
+    A value is taken only when a clause states exactly one percentage next to
+    exactly one intervention keyword ("use 30% recycled material"); anything
+    ambiguous is left out so the user is asked instead of guessed for.
+    """
+    values: Dict[str, float] = {}
+    for clause in re.split(r"\band\b|\bplus\b|[,;]", message, flags=re.IGNORECASE):
+        percents = _PERCENT.findall(clause)
+        levers = [name for name, pattern in _LEVER_KEYWORDS if pattern.search(clause)]
+        if len(percents) == 1 and len(levers) == 1 and levers[0] not in values:
+            value = float(percents[0])
+            if 0 < value <= 100:
+                values[levers[0]] = value
+    return ParsedInterventions(**values) if values else None
+
+
 def _extract_parameters(message: str) -> ParsedInterventions:
-    """Use Gemini Flash to extract intervention percentages from the user message."""
-    llm = get_llm()
+    """Use the LLM to extract intervention percentages; fall back to explicit rules if it is unavailable."""
     try:
+        llm = get_llm()
         result = llm.invoke([
             SystemMessage(content=PARSE_PROMPT),
             HumanMessage(content=message),
@@ -133,6 +161,10 @@ def _extract_parameters(message: str) -> ParsedInterventions:
         data = json.loads(raw)
         return ParsedInterventions.model_validate(data)
     except Exception as exc:
+        by_rules = parse_parameters_by_rules(message)
+        if by_rules is not None:
+            logger.warning("LLM parameter extraction failed (%s); using explicitly stated values.", exc)
+            return by_rules
         logger.warning("Parameter extraction failed (%s); requesting clarification.", exc)
         return ParsedInterventions(
             needs_clarification=True,
@@ -205,8 +237,9 @@ async def run_scenario(state: AgentState) -> Dict[str, Any]:
 
     # If clarification is needed, skip the engine call and go straight to response
     if tool_results.get("scenario_needs_clarification"):
+        # The engine is not called, so it is not reported as a tool used.
         logger.info("Skipping scenario calculation — clarification required")
-        return {"tools_used": [tool]}
+        return {}
 
     params_dict = tool_results.get("scenario_params") or {}
     factory_id = state["factory_id"]
