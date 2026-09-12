@@ -1,4 +1,5 @@
-import { apiClient, type ApiSuccess } from "@/services/apiClient"
+import { isAxiosError } from "axios"
+import { apiClient, type ApiErrorBody, type ApiSuccess } from "@/services/apiClient"
 
 export type ActivitySource = "MANUAL" | "CSV" | "SIMULATION"
 export type ActivityCategory = "ENERGY" | "FUEL" | "MATERIAL" | "WASTE"
@@ -19,6 +20,49 @@ export type ActivityCatalog = {
   defaultProductionUnit: string
   maxProductionQuantity: number
   sources: ActivitySource[]
+  csv: { requiredColumns: string[]; optionalColumns: string[]; maxRows: number; maxFileSizeMb: number }
+}
+
+/** `row` is the spreadsheet line number (0 for file-level problems). */
+export type CsvRowError = { row: number; field: string; message: string }
+
+export type CsvPreviewRow = {
+  row: number
+  processName: string
+  activityDate: string
+  energyType: string
+  quantity: number
+  unit: string
+  productionQuantity: number | null
+  productionUnit: string | null
+}
+
+export type CsvImportSummary = {
+  fileName: string
+  dryRun: boolean
+  imported: boolean
+  totalRows: number
+  validRows: number
+  invalidRows: number
+  activityCount: number
+  errors: CsvRowError[]
+  errorsTruncated: boolean
+  preview: CsvPreviewRow[]
+}
+
+export type UploadCsvOptions = {
+  /** Validate only; nothing is written. */
+  dryRun?: boolean
+  /** Import the valid rows even if some rows are invalid (otherwise nothing is imported). */
+  skipInvalidRows?: boolean
+  onProgress?: (percent: number) => void
+}
+
+/** Row-level errors carried in a rejected upload's error details. */
+export function getCsvRowErrors(error: unknown): CsvRowError[] {
+  if (!isAxiosError<ApiErrorBody>(error)) return []
+  const details: { field: string; message: string; row?: number }[] = error.response?.data?.error?.details ?? []
+  return details.map((detail) => ({ row: detail.row ?? 0, field: detail.field, message: detail.message }))
 }
 
 export type Activity = {
@@ -72,5 +116,26 @@ export const activityService = {
   async listForFactory(factoryId: number, query: ActivityListQuery = {}): Promise<ActivityPage> {
     const res = await apiClient.get<ApiSuccess<ActivityPage>>(`/factories/${factoryId}/activities`, { params: query })
     return res.data.data
+  },
+
+  async uploadCsv(factoryId: number, file: File, { dryRun = false, skipInvalidRows = false, onProgress }: UploadCsvOptions = {}) {
+    const form = new FormData()
+    form.append("factoryId", String(factoryId))
+    form.append("dryRun", String(dryRun))
+    form.append("skipInvalidRows", String(skipInvalidRows))
+    form.append("file", file)
+    // The browser sets the multipart boundary for FormData bodies.
+    const res = await apiClient.post<ApiSuccess<CsvImportSummary>>("/activities/upload", form, {
+      timeout: 120_000,
+      onUploadProgress: (event) => {
+        if (event.total) onProgress?.(Math.round((event.loaded / event.total) * 100))
+      },
+    })
+    return res.data.data
+  },
+
+  async downloadTemplate(): Promise<Blob> {
+    const res = await apiClient.get<Blob>("/activities/template", { responseType: "blob" })
+    return res.data
   },
 }

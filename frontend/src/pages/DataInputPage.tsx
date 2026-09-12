@@ -2,11 +2,11 @@ import { useCallback, useState } from "react"
 import { Link } from "react-router"
 import { Factory as FactoryIcon, Lock, Play, Square } from "lucide-react"
 import PageHeader from "@/components/PageHeader"
-import FileUploader from "@/components/FileUploader"
 import EmptyState from "@/components/feedback/EmptyState"
 import ErrorState from "@/components/feedback/ErrorState"
 import LoadingState from "@/components/feedback/LoadingState"
 import NotConnectedNotice from "@/components/feedback/NotConnectedNotice"
+import CsvImportPanel from "@/components/data-input/CsvImportPanel"
 import ManualActivityForm from "@/components/data-input/ManualActivityForm"
 import RecentActivitiesTable from "@/components/data-input/RecentActivitiesTable"
 import { Badge } from "@/components/ui/badge"
@@ -23,18 +23,6 @@ const TABS = [
   { id: "csv", label: "CSV Upload" },
   { id: "simulation", label: "Simulation" },
 ]
-
-function CsvPanel() {
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="text-sm text-muted-foreground">
-        Required columns: <code className="rounded bg-muted px-1">date, process, energy, fuel, material, production, waste</code>
-      </p>
-      <FileUploader accept=".csv" maxSizeMb={5} onFileSelected={() => undefined} />
-      <NotConnectedNotice>CSV validation and import are not connected yet.</NotConnectedNotice>
-    </div>
-  )
-}
 
 function SimulationPanel() {
   return (
@@ -123,7 +111,7 @@ export default function DataInputPage() {
                 <ManualActivityForm processes={processes} catalog={catalog} readOnly={!canWrite} onCreated={onDataChanged} />
               </div>
               <div id="panel-csv" role="tabpanel" aria-labelledby="tab-csv" hidden={tab !== "csv"}>
-                <CsvPanel />
+                <CsvImportPanel factoryId={factory.id} catalog={catalog} readOnly={!canWrite} onImported={onDataChanged} />
               </div>
               <div id="panel-simulation" role="tabpanel" aria-labelledby="tab-simulation" hidden={tab !== "simulation"}>
                 <SimulationPanel />
