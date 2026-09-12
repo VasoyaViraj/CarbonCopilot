@@ -113,6 +113,7 @@ updated_at
 id
 organization_id FK
 name
+industry_type
 location
 production_capacity
 production_unit
@@ -150,8 +151,9 @@ id
 category
 source
 fuel_type
-unit
-factor
+unit            (activity unit, e.g. kWh)
+factor          (co2e_unit per activity unit)
+co2e_unit       (default kgCO2e)
 region
 year
 reference
@@ -267,7 +269,25 @@ temperature
 energy_consumption
 fuel_consumption
 estimated_emission
-status
+status          (NORMAL | ALERT)
+is_simulated    (always true for hackathon readings)
+```
+
+### Enumerations & constraints
+
+```text
+Role                  ADMIN | FACTORY_OPERATOR | CONSULTANT | REGULATOR
+ActivitySource        MANUAL | CSV | SIMULATION
+RecommendationStatus  PENDING | ACCEPTED | REJECTED | IMPLEMENTED
+AiMessageRole         USER | ASSISTANT | SYSTEM
+SimulationStatus      NORMAL | ALERT
+
+users.email                                   unique
+users.organization_id                         required (every user belongs to an organization)
+processes (factory_id, name)                  unique — CSV rows resolve processes by name
+circular_alternatives (current, alternative)  unique
+emissions.emission_factor_id                  ON DELETE RESTRICT (factors explain history)
+factory children                              ON DELETE CASCADE
 ```
 
 ## 4. Domain Invariants

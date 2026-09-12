@@ -6,6 +6,45 @@ datasource db {
   provider = "postgresql"
 }
 
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  FACTORY_OPERATOR
+  CONSULTANT
+  REGULATOR
+}
+
+enum ActivitySource {
+  MANUAL
+  CSV
+  SIMULATION
+}
+
+enum RecommendationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  IMPLEMENTED
+}
+
+enum AiMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum SimulationStatus {
+  NORMAL
+  ALERT
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy & identity
+// ---------------------------------------------------------------------------
+
 model Organization {
   id            Int      @id @default(autoincrement())
   name          String
@@ -21,36 +60,45 @@ model Organization {
 
 model User {
   id              Int      @id @default(autoincrement())
-  organization_id Int?
+  organization_id Int
   name            String
   email           String   @unique
   password_hash   String
-  role            String   @default("FACTORY_OPERATOR")
+  role            Role     @default(FACTORY_OPERATOR)
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
-  organization Organization? @relation(fields: [organization_id], references: [id])
+  organization     Organization     @relation(fields: [organization_id], references: [id])
+  ai_conversations AiConversation[]
 
+  @@index([organization_id])
   @@map("users")
 }
+
+// ---------------------------------------------------------------------------
+// Factory structure
+// ---------------------------------------------------------------------------
 
 model Factory {
   id                  Int      @id @default(autoincrement())
   organization_id     Int
   name                String
+  industry_type       String?
   location            String?
   production_capacity Float?
   production_unit     String?
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
 
-  organization    Organization     @relation(fields: [organization_id], references: [id])
-  processes       Process[]
-  materials       Material[]
-  wastes          Waste[]
-  recommendations Recommendation[]
-  scenarios       Scenario[]
+  organization     Organization     @relation(fields: [organization_id], references: [id])
+  processes        Process[]
+  materials        Material[]
+  wastes           Waste[]
+  recommendations  Recommendation[]
+  scenarios        Scenario[]
+  ai_conversations AiConversation[]
 
+  @@index([organization_id])
   @@map("factories")
 }
 
@@ -62,15 +110,23 @@ model Process {
   description  String?
   created_at   DateTime @default(now())
 
-  factory    Factory    @relation(fields: [factory_id], references: [id])
-  activities Activity[]
-  wastes     Waste[]
+  factory             Factory             @relation(fields: [factory_id], references: [id], onDelete: Cascade)
+  activities          Activity[]
+  wastes              Waste[]
+  recommendations     Recommendation[]
+  simulation_readings SimulationReading[]
 
+  // CSV rows resolve processes by name within a factory, so names must be unambiguous.
+  @@unique([factory_id, name])
   @@map("processes")
 }
 
+// ---------------------------------------------------------------------------
+// Operational data & deterministic emissions
+// ---------------------------------------------------------------------------
+
 model Activity {
-  id                  Int      @id @default(autoincrement())
+  id                  Int            @id @default(autoincrement())
   process_id          Int
   activity_date       DateTime
   energy_type         String
@@ -78,12 +134,13 @@ model Activity {
   unit                String
   production_quantity Float?
   production_unit     String?
-  source              String?  @default("MANUAL") // MANUAL, CSV, SIMULATION
-  created_at          DateTime @default(now())
+  source              ActivitySource @default(MANUAL)
+  created_at          DateTime       @default(now())
 
-  process   Process    @relation(fields: [process_id], references: [id])
+  process   Process    @relation(fields: [process_id], references: [id], onDelete: Cascade)
   emissions Emission[]
 
+  @@index([process_id, activity_date])
   @@map("activities")
 }
 
@@ -92,8 +149,11 @@ model EmissionFactor {
   category   String
   source     String?
   fuel_type  String?
+  // Activity unit the factor applies to (e.g. kWh, m3, L, tonne).
   unit       String
+  // Factor value, expressed in co2e_unit per activity unit.
   factor     Float
+  co2e_unit  String   @default("kgCO2e")
   region     String?
   year       Int?
   reference  String?
@@ -101,6 +161,7 @@ model EmissionFactor {
 
   emissions Emission[]
 
+  @@index([category, fuel_type, unit])
   @@map("emission_factors")
 }
 
@@ -113,9 +174,12 @@ model Emission {
   calculation_method String?
   calculated_at      DateTime @default(now())
 
-  activity        Activity       @relation(fields: [activity_id], references: [id])
-  emission_factor EmissionFactor @relation(fields: [emission_factor_id], references: [id])
+  activity        Activity       @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  // Restrict: a factor that explains historical emissions must not be deleted.
+  emission_factor EmissionFactor @relation(fields: [emission_factor_id], references: [id], onDelete: Restrict)
 
+  @@index([activity_id])
+  @@index([emission_factor_id])
   @@map("emissions")
 }
 
@@ -129,8 +193,9 @@ model Material {
   unit          String
   created_at    DateTime @default(now())
 
-  factory Factory @relation(fields: [factory_id], references: [id])
+  factory Factory @relation(fields: [factory_id], references: [id], onDelete: Cascade)
 
+  @@index([factory_id])
   @@map("materials")
 }
 
@@ -144,11 +209,17 @@ model Waste {
   disposal_method String?
   created_at      DateTime @default(now())
 
-  factory Factory @relation(fields: [factory_id], references: [id])
-  process Process @relation(fields: [process_id], references: [id])
+  factory Factory @relation(fields: [factory_id], references: [id], onDelete: Cascade)
+  process Process @relation(fields: [process_id], references: [id], onDelete: Cascade)
 
+  @@index([factory_id])
+  @@index([process_id])
   @@map("waste")
 }
+
+// ---------------------------------------------------------------------------
+// Circular economy, recommendations & scenarios
+// ---------------------------------------------------------------------------
 
 model CircularAlternative {
   id                        Int      @id @default(autoincrement())
@@ -165,11 +236,13 @@ model CircularAlternative {
 
   recommendations Recommendation[]
 
+  @@unique([current_option, alternative_option])
+  @@index([category])
   @@map("circular_alternatives")
 }
 
 model Recommendation {
-  id                  Int      @id @default(autoincrement())
+  id                  Int                  @id @default(autoincrement())
   factory_id          Int
   process_id          Int?
   alternative_id      Int
@@ -179,15 +252,20 @@ model Recommendation {
   estimated_savings   Float?
   payback_period      Float?
   reason              String?
-  status              String?  @default("PENDING")
-  created_at          DateTime @default(now())
+  status              RecommendationStatus @default(PENDING)
+  created_at          DateTime             @default(now())
 
-  factory     Factory             @relation(fields: [factory_id], references: [id])
-  alternative CircularAlternative @relation(fields: [alternative_id], references: [id])
+  factory     Factory             @relation(fields: [factory_id], references: [id], onDelete: Cascade)
+  process     Process?            @relation(fields: [process_id], references: [id], onDelete: SetNull)
+  alternative CircularAlternative @relation(fields: [alternative_id], references: [id], onDelete: Restrict)
 
+  @@index([factory_id])
+  @@index([process_id])
+  @@index([alternative_id])
   @@map("recommendations")
 }
 
+// Scenario outputs are stored separately and never overwrite baseline activities/emissions.
 model Scenario {
   id                 Int      @id @default(autoincrement())
   factory_id         Int
@@ -202,7 +280,63 @@ model Scenario {
   payback_period     Float?
   created_at         DateTime @default(now())
 
-  factory Factory @relation(fields: [factory_id], references: [id])
+  factory Factory @relation(fields: [factory_id], references: [id], onDelete: Cascade)
 
+  @@index([factory_id])
   @@map("scenarios")
+}
+
+// ---------------------------------------------------------------------------
+// AI Copilot history
+// ---------------------------------------------------------------------------
+
+model AiConversation {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  factory_id Int
+  created_at DateTime @default(now())
+
+  user     User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  factory  Factory     @relation(fields: [factory_id], references: [id], onDelete: Cascade)
+  messages AiMessage[]
+
+  @@index([user_id])
+  @@index([factory_id])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id              Int           @id @default(autoincrement())
+  conversation_id Int
+  role            AiMessageRole
+  content         String
+  // Optional tool metadata (tool names / structured results); never secrets or internal prompts.
+  tool_used       Json?
+  created_at      DateTime      @default(now())
+
+  conversation AiConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+
+  @@index([conversation_id, created_at])
+  @@map("ai_messages")
+}
+
+// ---------------------------------------------------------------------------
+// Simulated readings (hackathon stand-in for sensors; always labelled simulated)
+// ---------------------------------------------------------------------------
+
+model SimulationReading {
+  id                 Int              @id @default(autoincrement())
+  process_id         Int
+  timestamp          DateTime         @default(now())
+  temperature        Float?
+  energy_consumption Float?
+  fuel_consumption   Float?
+  estimated_emission Float?
+  status             SimulationStatus @default(NORMAL)
+  is_simulated       Boolean          @default(true)
+
+  process Process @relation(fields: [process_id], references: [id], onDelete: Cascade)
+
+  @@index([process_id, timestamp])
+  @@map("simulation_readings")
 }
