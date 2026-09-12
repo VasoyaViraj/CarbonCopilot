@@ -25,7 +25,7 @@ const TYPE_ORDER = Object.keys(ACTIVITY_TYPES);
 const LATEST_EMISSION = { orderBy: [{ calculated_at: 'desc' }, { id: 'desc' }], take: 1 };
 
 // Rounds away float noise (0.1 + 0.2) so identical inputs always serialise identically.
-const round = (value, digits = 6) => {
+export const round = (value, digits = 6) => {
   const scale = 10 ** digits;
   return Math.round(value * scale) / scale;
 };
