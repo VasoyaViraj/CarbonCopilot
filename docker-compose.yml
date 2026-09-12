@@ -8,7 +8,8 @@ services:
       POSTGRES_PASSWORD: ecotrace
       POSTGRES_DB: ecotrace
     ports:
-      - "5432:5432"
+      # Loopback only: these development credentials must not be reachable from the network.
+      - "127.0.0.1:5432:5432"
     volumes:
       - ecotrace-pgdata:/var/lib/postgresql/data
     healthcheck:
