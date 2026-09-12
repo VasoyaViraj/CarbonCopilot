@@ -28,7 +28,7 @@ React + Vite ──REST──► Node + Express ──► PostgreSQL (source of 
 | `ai-service/` (FastAPI) | AI orchestration: LangChain, LangGraph, MCP, LLM reasoning/explanation |
 | PostgreSQL | System of record |
 
-LLMs never perform authoritative arithmetic — numbers come from deterministic backend/tool code. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+LLMs never perform authoritative arithmetic — numbers come from deterministic backend/tool code.
 
 ## Repository structure
 
@@ -38,7 +38,6 @@ CarbonCopilot/
 ├── backend/      Express API + Prisma (PostgreSQL)
 ├── ai-service/   Python FastAPI AI service (LangGraph + MCP)
 ├── data/         Demo datasets and CSV templates
-├── docs/         Product and technical documentation
 └── docker-compose.yml   Optional local PostgreSQL
 ```
 
@@ -88,8 +87,6 @@ npm run dev
 - Success: `{ "success": true, "data": ... }`
 - Error: `{ "success": false, "error": { "code": "VALIDATION_ERROR", "message": "...", "details": [...] } }`
 
-Full contract: [docs/API_CONTRACT.md](docs/API_CONTRACT.md).
-
 ## Roles
 
 `ADMIN`, `FACTORY_OPERATOR`, `CONSULTANT`, `REGULATOR`. The backend is authoritative for all authorization; every factory-scoped request is checked against the user's organization.
@@ -107,7 +104,3 @@ Full contract: [docs/API_CONTRACT.md](docs/API_CONTRACT.md).
 1. Frontend builds against isolated mock data (`src/mocks/`), replaced by real services as APIs land.
 2. Backend exposes the deterministic business APIs; the AI service calls backend internal APIs rather than duplicating business logic.
 3. Express proxies AI requests (`/api/ai/*`) after authenticating the user and authorizing the factory; the browser never talks to the AI service directly.
-
-## Documentation
-
-[PRD](docs/PRD.md) · [CRD](docs/CRD.md) · [TRD](docs/TRD.md) · [Architecture](docs/ARCHITECTURE.md) · [Domain model](docs/DOMAIN_MODEL.md) · [API contract](docs/API_CONTRACT.md) · [State machines](docs/STATE_MACHINES.md) · [Business rules](docs/BUSINESS_RULES.md) · [Demo script](docs/DEMO_SCRIPT.md) · [Test plan](docs/TEST_PLAN.md) · [ADR](docs/ADR.md) · [Agents](docs/AGENTS.md) · [Phase-wise prompts](docs/phase-wise-prompts.md)
