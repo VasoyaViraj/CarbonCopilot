@@ -8,6 +8,7 @@ import anomalyRoutes from './anomaly.routes.js';
 import hotspotRoutes from './hotspot.routes.js';
 import recommendationRoutes from './recommendation.routes.js';
 import scenarioRoutes from './scenario.routes.js';
+import aiRoutes from './ai.routes.js';
 
 const router = express.Router();
 
@@ -21,6 +22,7 @@ router.use(anomalyRoutes);
 router.use(hotspotRoutes);
 router.use(recommendationRoutes);
 router.use(scenarioRoutes);
+router.use(aiRoutes);
 router.use('/factories', factoryRoutes);
 
 export default router;

@@ -51,6 +51,7 @@ class ScenarioSummary(BaseModel):
     estimated_cost: Optional[float] = None
     estimated_savings: Optional[float] = None
     payback_period: Optional[str] = None  # "N/A" when savings are zero
+    unit: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -82,5 +83,9 @@ class CopilotResponse(BaseModel):
     # Caveats the model injected (e.g. "based on available data", "estimated").
     assumptions: List[str] = Field(default_factory=list)
     confidence: ConfidenceLevel = ConfidenceLevel.MEDIUM
+    # Intent the router chose (FACTORY_OVERVIEW, HOTSPOT_ANALYSIS, …).
+    intent: Optional[str] = None
+    # Structured, validated ActionPlan for ACTION_PLAN questions.
+    action_plan: Optional[Dict[str, Any]] = Field(default=None, alias="actionPlan")
 
     model_config = {"populate_by_name": True}
