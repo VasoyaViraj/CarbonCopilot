@@ -32,6 +32,8 @@ type Reading = {
   typeLabel: string
   quantity: number
   unit: string
+  /** Backend carbon-engine result, e.g. "35 kgCO2e". */
+  co2e: string | null
   spike: boolean
 }
 
@@ -160,6 +162,7 @@ export default function SimulationPanel({ processes, catalog, readOnly, onReadin
               typeLabel: settings.type.label,
               quantity: activity.quantity,
               unit: activity.unit,
+              co2e: activity.emission ? `${formatNumber(activity.emission.co2eValue)} ${activity.emission.co2eUnit}` : null,
               spike,
             },
             ...current,
@@ -185,6 +188,7 @@ export default function SimulationPanel({ processes, catalog, readOnly, onReadin
     { key: "process", header: "Process", render: (row) => row.processName },
     { key: "stream", header: "Stream", render: (row) => row.typeLabel },
     { key: "value", header: "Value", align: "right", render: (row) => `${formatNumber(row.quantity)} ${row.unit}` },
+    { key: "co2e", header: "Est. CO2e", align: "right", render: (row) => row.co2e ?? "—" },
     {
       key: "label",
       header: "Label",

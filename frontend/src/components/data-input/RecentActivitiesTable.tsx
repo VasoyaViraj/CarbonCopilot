@@ -70,6 +70,12 @@ export default function RecentActivitiesTable({ factoryId, catalog, refreshKey }
       align: "right",
       render: (row) => (row.productionQuantity == null ? "—" : `${formatNumber(row.productionQuantity)} ${row.productionUnit ?? ""}`),
     },
+    {
+      key: "co2e",
+      header: "Est. CO2e",
+      align: "right",
+      render: (row) => (row.emission ? `${formatNumber(row.emission.co2eValue)} ${row.emission.co2eUnit}` : "—"),
+    },
     { key: "source", header: "Source", render: (row) => <ActivitySourceBadge source={row.source} /> },
   ]
 

@@ -23,46 +23,14 @@ export type ActivityCatalog = {
   csv: { requiredColumns: string[]; optionalColumns: string[]; maxRows: number; maxFileSizeMb: number }
 }
 
-/** `row` is the spreadsheet line number (0 for file-level problems). */
-export type CsvRowError = { row: number; field: string; message: string }
-
-export type CsvPreviewRow = {
-  row: number
-  processName: string
-  activityDate: string
-  energyType: string
-  quantity: number
-  unit: string
-  productionQuantity: number | null
-  productionUnit: string | null
-}
-
-export type CsvImportSummary = {
-  fileName: string
-  dryRun: boolean
-  imported: boolean
-  totalRows: number
-  validRows: number
-  invalidRows: number
-  activityCount: number
-  errors: CsvRowError[]
-  errorsTruncated: boolean
-  preview: CsvPreviewRow[]
-}
-
-export type UploadCsvOptions = {
-  /** Validate only; nothing is written. */
-  dryRun?: boolean
-  /** Import the valid rows even if some rows are invalid (otherwise nothing is imported). */
-  skipInvalidRows?: boolean
-  onProgress?: (percent: number) => void
-}
-
-/** Row-level errors carried in a rejected upload's error details. */
-export function getCsvRowErrors(error: unknown): CsvRowError[] {
-  if (!isAxiosError<ApiErrorBody>(error)) return []
-  const details: { field: string; message: string; row?: number }[] = error.response?.data?.error?.details ?? []
-  return details.map((detail) => ({ row: detail.row ?? 0, field: detail.field, message: detail.message }))
+/** Deterministic carbon-engine result stored with the activity (never computed in the browser). */
+export type ActivityEmission = {
+  id: number
+  co2eValue: number
+  co2eUnit: string
+  emissionFactorId: number
+  calculationMethod: string | null
+  calculatedAt: string | null
 }
 
 export type Activity = {
@@ -80,6 +48,7 @@ export type Activity = {
   /** Always true for SIMULATION activities — never physical sensor measurements. */
   isSimulated: boolean
   createdAt: string
+  emission: ActivityEmission | null
 }
 
 export type ActivityPage = { items: Activity[]; total: number; limit: number; offset: number }
@@ -100,6 +69,52 @@ export type ActivityListQuery = {
   to?: string
   limit?: number
   offset?: number
+}
+
+/** `row` is the spreadsheet line number (0 for file-level problems). */
+export type CsvRowError = { row: number; field: string; message: string }
+
+export type CsvPreviewRow = {
+  row: number
+  processName: string
+  activityDate: string
+  energyType: string
+  quantity: number
+  unit: string
+  productionQuantity: number | null
+  productionUnit: string | null
+  co2eValue: number
+  co2eUnit: string
+}
+
+export type CsvImportSummary = {
+  fileName: string
+  dryRun: boolean
+  imported: boolean
+  totalRows: number
+  validRows: number
+  invalidRows: number
+  activityCount: number
+  /** Carbon-engine estimate for the valid rows; null when factors use mixed CO2e units. */
+  co2e: { value: number; unit: string } | null
+  errors: CsvRowError[]
+  errorsTruncated: boolean
+  preview: CsvPreviewRow[]
+}
+
+export type UploadCsvOptions = {
+  /** Validate only; nothing is written. */
+  dryRun?: boolean
+  /** Import the valid rows even if some rows are invalid (otherwise nothing is imported). */
+  skipInvalidRows?: boolean
+  onProgress?: (percent: number) => void
+}
+
+/** Row-level errors carried in a rejected upload's error details. */
+export function getCsvRowErrors(error: unknown): CsvRowError[] {
+  if (!isAxiosError<ApiErrorBody>(error)) return []
+  const details: { field: string; message: string; row?: number }[] = error.response?.data?.error?.details ?? []
+  return details.map((detail) => ({ row: detail.row ?? 0, field: detail.field, message: detail.message }))
 }
 
 export const activityService = {

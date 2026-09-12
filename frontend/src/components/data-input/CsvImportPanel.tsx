@@ -100,6 +100,7 @@ function Preview({ rows, catalog }: { rows: CsvPreviewRow[]; catalog: ActivityCa
       align: "right",
       render: (row) => (row.productionQuantity == null ? "—" : `${formatNumber(row.productionQuantity)} ${row.productionUnit}`),
     },
+    { key: "co2e", header: "Est. CO2e", align: "right", render: (row) => `${formatNumber(row.co2eValue)} ${row.co2eUnit}` },
   ]
   return (
     <div className="flex flex-col gap-2">
@@ -243,6 +244,15 @@ export default function CsvImportPanel({ factoryId, catalog, readOnly, onImporte
             <StatTile label="Rows with errors" value={phase.summary.invalidRows} tone="bad" />
             <StatTile label="Activities to create" value={phase.summary.activityCount} />
           </div>
+          {phase.summary.co2e && (
+            <p className="text-sm text-muted-foreground">
+              Estimated emissions of the valid rows:{" "}
+              <span className="font-medium text-foreground">
+                {formatNumber(phase.summary.co2e.value)} {phase.summary.co2e.unit}
+              </span>{" "}
+              (calculated by the backend carbon engine from the configured emission factors).
+            </p>
+          )}
           {phase.summary.invalidRows > 0 && (
             <p className="flex items-start gap-1.5 text-sm text-destructive">
               <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />

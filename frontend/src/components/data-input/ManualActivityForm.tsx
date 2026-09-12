@@ -213,7 +213,8 @@ export default function ManualActivityForm({ processes, catalog, readOnly, onCre
           {saved && (
             <p role="status" className="flex items-center gap-1.5 text-sm">
               <CircleCheck className="size-4 text-primary" aria-hidden />
-              Saved {savedType?.label ?? saved.energyType} · {formatNumber(saved.quantity)} {saved.unit} for {saved.processName}.
+              Saved {savedType?.label ?? saved.energyType} · {formatNumber(saved.quantity)} {saved.unit} for {saved.processName}
+              {saved.emission && ` → ${formatNumber(saved.emission.co2eValue)} ${saved.emission.co2eUnit} estimated`}.
             </p>
           )}
         </div>
