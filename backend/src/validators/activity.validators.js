@@ -85,32 +85,43 @@ export const csvUploadBodySchema = z
   })
   .strict();
 
-const dateFilter = z
+// Query-string filters shared by the activity and emission list/summary endpoints.
+export const dateFilter = z
   .string()
   .trim()
   .refine((value) => !parseIsoDate(value).error, 'Must be a date in YYYY-MM-DD format')
   .transform((value) => parseIsoDate(value).date);
 
-export const listActivitiesQuerySchema = z
-  .object({
-    from: dateFilter.optional(),
-    to: dateFilter.optional(),
-    source: z.enum(Object.values(ACTIVITY_SOURCES)).optional(),
-    energyType: z
-      .string()
-      .trim()
-      .transform((value, ctx) => {
-        const type = resolveTypeOrError(value);
-        if (!type.error) return type.key;
-        ctx.addIssue({ code: 'custom', message: type.error });
-        return z.NEVER;
-      })
-      .optional(),
-    limit: z.coerce.number().int().min(1).max(200).default(50),
-    offset: z.coerce.number().int().min(0).max(100_000).default(0),
-  })
-  .strict()
-  .refine((query) => !query.from || !query.to || query.from <= query.to, {
+export const activityTypeFilter = z
+  .string()
+  .trim()
+  .transform((value, ctx) => {
+    const type = resolveTypeOrError(value);
+    if (!type.error) return type.key;
+    ctx.addIssue({ code: 'custom', message: type.error });
+    return z.NEVER;
+  });
+
+export const paginationShape = {
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).max(100_000).default(0),
+};
+
+/** Rejects a from/to range that ends before it starts. */
+export const withOrderedDateRange = (schema) =>
+  schema.refine((query) => !query.from || !query.to || query.from <= query.to, {
     path: ['to'],
     message: '"to" must not be before "from"',
   });
+
+export const listActivitiesQuerySchema = withOrderedDateRange(
+  z
+    .object({
+      from: dateFilter.optional(),
+      to: dateFilter.optional(),
+      source: z.enum(Object.values(ACTIVITY_SOURCES)).optional(),
+      energyType: activityTypeFilter.optional(),
+      ...paginationShape,
+    })
+    .strict()
+);

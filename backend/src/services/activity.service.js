@@ -58,11 +58,14 @@ export async function createActivity(processId, input) {
 }
 
 /**
- * Lists activities for one process or for every process of a factory. Callers must have
+ * Prisma filter for the activities of a process and/or every process of a factory, narrowed by
+ * the shared list filters (from/to inclusive days, source, energyType). Callers must have
  * already authorized the process/factory against the user's organization.
  */
-export async function listActivities({ processId, factoryId }, query) {
-  const where = processId ? { process_id: processId } : { process: { factory_id: factoryId } };
+export function activityWhere({ processId, factoryId }, query = {}) {
+  const where = {};
+  if (processId) where.process_id = processId;
+  if (factoryId) where.process = { factory_id: factoryId };
   if (query.source) where.source = query.source;
   if (query.energyType) where.energy_type = query.energyType;
   if (query.from || query.to) {
@@ -71,7 +74,12 @@ export async function listActivities({ processId, factoryId }, query) {
     // "to" is an inclusive calendar day.
     if (query.to) where.activity_date.lt = new Date(query.to.getTime() + DAY_MS);
   }
+  return where;
+}
 
+/** Lists activities for one process or for every process of a factory (see activityWhere). */
+export async function listActivities({ processId, factoryId }, query) {
+  const where = activityWhere(processId ? { processId } : { factoryId }, query);
   const [items, total] = await Promise.all([
     prisma.activity.findMany({
       where,

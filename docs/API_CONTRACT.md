@@ -314,25 +314,80 @@ The deterministic carbon engine (`backend/src/services/carbon.service.js`, BR-01
 - **Recalculation:** recalculating an activity replaces its emission rather than duplicating it.
 - **Backfill:** `npm run emissions:backfill` calculates emissions for any activities stored without one.
 
-The endpoints below arrive with the Carbon Dashboard (Phase 7).
-
 ```http
 POST /api/emissions/calculate
 GET  /api/factories/:id/emissions
 GET  /api/factories/:id/emissions/summary
 ```
 
-Calculation response:
+Every role in the organization may read emissions. Factories outside the caller's organization return `404 NOT_FOUND`.
+
+### Calculate
+
+Two request forms are accepted:
+
+- **Ad hoc:** `{ "activityType": "NATURAL_GAS", "quantity": 300, "unit": "m3", "emissionFactorId": 5 }`. `unit` and `emissionFactorId` are optional. Nothing is stored and any role may call it. `quantity` may be `0`; otherwise it follows the ingestion rules (§5). This is the capability the `calculate_emissions` MCP tool exposes.
+- **Stored activity:** `{ "activityId": 101 }`. This recalculates the activity with the current factor and replaces its stored emission. It requires `ADMIN` or `FACTORY_OPERATOR` (`403` otherwise), and activities outside the organization return `404`.
+
+Sending both forms at once is rejected. `200` response:
+
 ```json
 {
   "activityId": 101,
-  "emissionFactorId": 5,
+  "activityType": "NATURAL_GAS",
   "quantity": 300,
+  "unit": "m3",
+  "emissionFactorId": 5,
   "factor": 1.9,
+  "factorUnit": "kgCO2e/m3",
+  "factorSource": { "region": "GLOBAL-DEMO", "year": 2026, "reference": "…" },
   "co2eValue": 570,
-  "unit": "kgCO2e"
+  "co2eUnit": "kgCO2e",
+  "calculationMethod": "CO2e = activity quantity × emission factor",
+  "emission": { "id": 71, "co2eValue": 570, "co2eUnit": "kgCO2e", "emissionFactorId": 5, "calculationMethod": "…", "calculatedAt": "…" }
 }
 ```
+
+`activityId` and `emission` are only present for the stored-activity form.
+
+### List
+
+`GET /api/factories/:id/emissions` accepts `from`, `to`, `source`, `energyType`, `processId`, `limit` and `offset`, like the activity list. It returns `{ "items", "total", "limit", "offset" }`, newest activity first. Each item is the stored emission plus the activity (`activityId`, `processId`, `processName`, `activityDate`, `energyType`, `category`, `quantity`, `unit`, `source`, `isSimulated`) and the factor that explains it (`factor: { id, value, unit, region, year, reference }`).
+
+### Dashboard summary
+
+`GET /api/factories/:id/emissions/summary` backs the Carbon Dashboard. It aggregates stored emissions; nothing is recalculated and clients never total emissions themselves.
+
+Query parameters:
+
+- `from`, `to`: inclusive `YYYY-MM-DD` dates.
+- `source`: `MANUAL`, `CSV` or `SIMULATION`.
+- `granularity`: `month` (default) or `day`. Daily history requires `from` and `to`, at most 366 days apart.
+
+```json
+{
+  "factory": { "id": 3, "name": "ABC Metal Manufacturing" },
+  "filters": { "from": "2026-04-01", "to": "2026-09-30", "source": null, "granularity": "month" },
+  "co2eUnit": "tCO2e",
+  "totals": { "co2e": 1250, "simulatedCo2e": 12.4, "activityCount": 540, "emissionCount": 540 },
+  "production": { "quantity": 10000, "unit": "tonnes", "byUnit": [{ "unit": "tonnes", "quantity": 10000 }] },
+  "intensity": { "value": 0.125, "unit": "tCO2e/tonne" },
+  "byProcess": [{ "processId": 7, "process": "Furnace", "co2e": 520, "percentage": 41.6, "activityCount": 120 }],
+  "bySource": [{ "activityType": "NATURAL_GAS", "label": "Natural gas", "category": "FUEL", "co2e": 610, "percentage": 48.8 }],
+  "byDataSource": [{ "source": "SIMULATION", "isSimulated": true, "co2e": 12.4, "activityCount": 30, "percentage": 0.99 }],
+  "history": [{ "period": "2026-09", "co2e": 104 }],
+  "energy": [{ "activityType": "ELECTRICITY", "label": "Electricity", "category": "ENERGY", "unit": "kWh", "total": 426700, "history": [{ "period": "2026-09", "quantity": 70900 }] }],
+  "warnings": []
+}
+```
+
+- **Units:** CO2e figures are in tCO2e, converted from the stored kgCO2e. Energy quantities stay in each type's canonical unit and are never converted.
+- **Processes:** every process of the factory is listed, including those with no emissions. `percentage` is the share of the total, and it is `0` when the total is `0`.
+- **History and energy:** each series has one point per `YYYY-MM` or `YYYY-MM-DD` period (UTC) from `from` (or the first activity) to `to` (or the last activity). Periods with no data are filled with `0`.
+- **Production:** summed per unit. Mass units combine into tonnes.
+- **Intensity:** total CO2e divided by production (BR-05), in `tCO2e/tonne` or `tCO2e/unit`. It is `null` when there is no production or production mixes mass and count units.
+- **Warnings:** each warning is `{ code, message }`. Codes are `MISSING_EMISSIONS` (activities with no stored emission, which are excluded), `UNSUPPORTED_CO2E_UNIT`, `NO_PRODUCTION` and `MIXED_PRODUCTION_UNITS`.
+- **Simulated readings:** `totals.simulatedCo2e` and `byDataSource[].isSimulated` let the UI label simulated readings (BR-12).
 
 ## 7. Hotspots
 
