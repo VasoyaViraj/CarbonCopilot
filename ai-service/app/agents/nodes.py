@@ -13,63 +13,47 @@ import json
 import logging
 from typing import Any, Dict
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, SystemMessage
 
+from app.agents.intent_router import classify_message, last_user_message
 from app.agents.state import AgentState
 from app.services.llm import get_llm
 
 logger = logging.getLogger("ecotrace.ai.nodes")
 
-# ---------------------------------------------------------------------------
-# Intent constants
-# ---------------------------------------------------------------------------
-INTENTS = {
-    "FACTORY_OVERVIEW",
-    "HOTSPOT_ANALYSIS",
-    "RECOMMENDATION",
-    "SCENARIO",
-    "ACTION_PLAN",
-    "GENERAL_CARBON_QUESTION",
-}
 
-INTENT_CLASSIFICATION_PROMPT = """You are an intent classifier for EcoTrace AI, a carbon-footprint analysis system.
-
-Classify the user message into exactly one of these intents:
-- FACTORY_OVERVIEW — questions about the factory profile, industry, processes
-- HOTSPOT_ANALYSIS — questions about emission hotspots, biggest sources, root causes
-- RECOMMENDATION — requests for what to fix, interventions, circular alternatives
-- SCENARIO — what-if questions with specific percentage/parameter changes
-- ACTION_PLAN — requests to generate a full sustainability action plan
-- GENERAL_CARBON_QUESTION — general carbon/sustainability questions not specific to the factory
-
-Return ONLY the intent label, nothing else."""
+def _llm_or_none() -> Any:
+    """Return the LLM, or None if it cannot be initialised (rules-only routing)."""
+    try:
+        return get_llm()
+    except Exception as exc:
+        logger.warning("LLM unavailable for intent routing: %s", exc)
+        return None
 
 
 # ---------------------------------------------------------------------------
-# Node: classify_intent
+# Node: classify_intent (the intent router)
 # ---------------------------------------------------------------------------
 def classify_intent(state: AgentState) -> Dict[str, Any]:
-    """Use the LLM to classify the user's message into a structured intent."""
-    messages = state["messages"]
-    last_user_msg = next(
-        (m.content for m in reversed(messages) if isinstance(m, HumanMessage)), ""
+    """Classify the latest user message into a structured intent.
+
+    Only the message text is inspected — no factory data is loaded yet, so the
+    classification cannot contain factory-specific claims.
+    """
+    message = last_user_message(state["messages"])
+    classification = classify_message(message, llm=_llm_or_none())
+
+    logger.info(
+        "Classified intent: %s (source=%s, confidence=%.2f, clarify=%s)",
+        classification.intent.value,
+        classification.source.value,
+        classification.confidence,
+        classification.needs_clarification,
     )
-
-    llm = get_llm()
-    classification = llm.invoke(
-        [
-            SystemMessage(content=INTENT_CLASSIFICATION_PROMPT),
-            HumanMessage(content=last_user_msg),
-        ]
-    )
-
-    intent_text = classification.content.strip().upper()
-    if intent_text not in INTENTS:
-        logger.warning("Unknown intent '%s', defaulting to GENERAL_CARBON_QUESTION", intent_text)
-        intent_text = "GENERAL_CARBON_QUESTION"
-
-    logger.info("Classified intent: %s", intent_text)
-    return {"intent": intent_text}
+    return {
+        "intent": classification.intent.value,
+        "intent_classification": classification.model_dump(mode="json"),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +93,14 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
 
     tool_context = json.dumps(tool_results, indent=2, default=str) if tool_results else "No tool data available."
 
+    classification = state.get("intent_classification") or {}
+    clarification_rule = (
+        "\n6. The request is ambiguous. Do not make factory-specific claims; give a brief general answer "
+        "and ask one short clarifying question about what the user wants to analyse."
+        if classification.get("needs_clarification")
+        else ""
+    )
+
     system_prompt = f"""You are EcoTrace AI Copilot, a sustainability analysis assistant.
 
 Your role is to explain carbon emission data for a factory. You have access to actual calculated data from deterministic tools.
@@ -118,7 +110,7 @@ Rules you MUST follow:
 2. If data is missing, say so explicitly.
 3. Label any simulated readings clearly as "simulated".
 4. Recommendations are decision-support, not guaranteed outcomes.
-5. Always include relevant assumptions or limitations.
+5. Always include relevant assumptions or limitations.{clarification_rule}
 
 Current intent: {intent}
 

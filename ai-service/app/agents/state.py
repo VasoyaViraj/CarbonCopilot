@@ -25,6 +25,10 @@ class AgentState(TypedDict):
     #         SCENARIO | ACTION_PLAN | GENERAL_CARBON_QUESTION
     intent: Optional[str]
 
+    # Full structured router output (IntentClassification.model_dump):
+    # intent, confidence, needs_clarification, source, rationale
+    intent_classification: Optional[Dict[str, Any]]
+
     # Structured results returned by MCP tools (keyed by tool name)
     tool_results: Dict[str, Any]
 
