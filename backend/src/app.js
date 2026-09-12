@@ -1,24 +1,28 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import authRoutes from './routes/auth.routes.js';
+import { env } from './config/env.js';
+import routes from './routes/index.js';
+import { requestContext } from './middleware/requestContext.middleware.js';
+import { errorHandler, notFoundHandler } from './middleware/error.middleware.js';
 
 const app = express();
 
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true
-}));
+app.disable('x-powered-by');
 
-app.use(express.json());
+app.use(requestContext);
+app.use(
+  cors({
+    origin: env.corsOrigins,
+    credentials: true,
+  })
+);
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
-// Routes
-app.use('/api/auth', authRoutes);
+app.use('/api', routes);
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', message: 'EcoCopilot Backend is running' });
-});
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 export default app;

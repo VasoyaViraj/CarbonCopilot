@@ -50,6 +50,7 @@ Standard success/error shape:
 | 409 | `CONFLICT` | Duplicate resource (e.g. email already registered) |
 | 413 | `PAYLOAD_TOO_LARGE` | Upload exceeds the configured limit |
 | 502 | `AI_SERVICE_ERROR` | AI service returned an error |
+| 503 | `SERVICE_UNAVAILABLE` | A dependency (e.g. the database) is unavailable |
 | 504 | `AI_SERVICE_TIMEOUT` | AI service did not respond in time |
 | 500 | `INTERNAL_ERROR` | Unexpected server error |
 
