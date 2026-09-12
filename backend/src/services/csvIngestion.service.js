@@ -1,6 +1,7 @@
 // CSV ingestion pipeline: parse → header check → row-level validation → process resolution
-// → duplicate protection → transactional persistence. A row is either imported whole or not
-// at all, and invalid rows are never written: they are reported back with row-level errors.
+// → duplicate protection → emission-factor resolution → transactional persistence of the
+// activities and their deterministic emissions. A row is either imported whole or not at all,
+// and invalid rows are never written: they are reported back with row-level errors.
 import { parse } from 'csv-parse/sync';
 import prisma from '../db/db.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -15,6 +16,13 @@ import {
   resolveTypeOrError,
   resolveUnitOrError,
 } from '../validators/activity.rules.js';
+import {
+  buildEmissionData,
+  calculateEmissionValue,
+  getFactor,
+  missingFactorMessage,
+  resolveEmissionFactors,
+} from './carbon.service.js';
 
 export const MAX_CSV_ROWS = 5000;
 const MAX_REPORTED_ERRORS = 500;
@@ -212,6 +220,8 @@ function evaluateRow({ rowNumber, cells }, header, processIndex, now) {
 const activityKey = (activity) =>
   `${activity.process_id}|${activity.activity_date.toISOString()}|${activity.energy_type}|${activity.quantity}`;
 
+const columnFor = (activityType) => COLUMN_BY_CATEGORY[ACTIVITY_TYPES[activityType].category];
+
 /** Existing activities that exactly match an incoming record, keyed like activityKey. */
 async function findExistingActivities(db, rows) {
   const records = rows.flatMap((row) => row.records);
@@ -238,7 +248,7 @@ function flagDuplicates(rows, existing) {
     if (row.errors.length) continue;
     const keys = row.records.map(activityKey);
     row.records.forEach((record, index) => {
-      const field = COLUMN_BY_CATEGORY[ACTIVITY_TYPES[record.energy_type].category];
+      const field = columnFor(record.energy_type);
       const existingId = existing.get(keys[index]);
       const earlierRow = seen.get(keys[index]);
       if (existingId) {
@@ -252,9 +262,35 @@ function flagDuplicates(rows, existing) {
   }
 }
 
+/**
+ * Resolves every valid record's emission factor and estimated CO2e (row.co2e, aligned with
+ * row.records). A record without a factor invalidates its row, so an activity is never
+ * imported without a calculable emission.
+ */
+function attachEmissions(rows, factors) {
+  for (const row of rows) {
+    row.co2e = [];
+    if (row.errors.length) continue;
+    for (const record of row.records) {
+      const factor = getFactor(factors, record.energy_type, record.unit);
+      if (factor) {
+        row.co2e.push({ value: calculateEmissionValue(record.quantity, factor.factor, record.unit, factor.unit), unit: factor.co2e_unit });
+      } else {
+        row.errors.push({ row: row.rowNumber, field: columnFor(record.energy_type), message: missingFactorMessage(record.energy_type, record.unit) });
+      }
+    }
+    if (row.errors.length) {
+      row.records = [];
+      row.co2e = [];
+    }
+  }
+}
+
 function summarize(rows, { fileName, dryRun, imported }) {
   const validRows = rows.filter((row) => row.errors.length === 0);
   const errors = rows.flatMap((row) => row.errors);
+  const estimates = validRows.flatMap((row) => row.co2e);
+  const co2eUnits = new Set(estimates.map((estimate) => estimate.unit));
   return {
     fileName,
     dryRun,
@@ -263,11 +299,16 @@ function summarize(rows, { fileName, dryRun, imported }) {
     validRows: validRows.length,
     invalidRows: rows.length - validRows.length,
     activityCount: validRows.reduce((count, row) => count + row.records.length, 0),
+    // Carbon-engine total for the valid rows (null when factors report different CO2e units).
+    co2e:
+      estimates.length > 0 && co2eUnits.size === 1
+        ? { value: estimates.reduce((sum, estimate) => sum + estimate.value, 0), unit: [...co2eUnits][0] }
+        : null,
     errors: errors.slice(0, MAX_REPORTED_ERRORS),
     errorsTruncated: errors.length > MAX_REPORTED_ERRORS,
     preview: validRows
       .flatMap((row) =>
-        row.records.map((record) => ({
+        row.records.map((record, index) => ({
           row: row.rowNumber,
           processName: record.processName,
           activityDate: record.activity_date.toISOString(),
@@ -276,6 +317,8 @@ function summarize(rows, { fileName, dryRun, imported }) {
           unit: record.unit,
           productionQuantity: record.production_quantity,
           productionUnit: record.production_unit,
+          co2eValue: row.co2e[index].value,
+          co2eUnit: row.co2e[index].unit,
         }))
       )
       .slice(0, PREVIEW_SIZE),
@@ -296,15 +339,21 @@ export async function importActivitiesCsv({ factory, file, dryRun = false, skipI
     const evaluated = rows.map((row) => evaluateRow(row, header, processIndex, now)).filter(Boolean);
     if (evaluated.length === 0) throw ApiError.badRequest('The CSV has no data rows', [{ field: 'file', message: 'Add at least one row below the header' }]);
     flagDuplicates(evaluated, await findExistingActivities(db, evaluated));
-    return evaluated;
+    const pairs = evaluated.flatMap((row) => row.records).map((record) => ({ activityType: record.energy_type, unit: record.unit }));
+    const factors = await resolveEmissionFactors(pairs, db);
+    attachEmissions(evaluated, factors);
+    return { evaluated, factors };
   };
 
-  if (dryRun) return summarize(await evaluate(prisma), { fileName, dryRun: true, imported: false });
+  if (dryRun) {
+    const { evaluated } = await evaluate(prisma);
+    return summarize(evaluated, { fileName, dryRun: true, imported: false });
+  }
 
-  // Validation and the duplicate check run inside the same transaction as the insert.
+  // Validation, duplicate checks and inserts (activities + emissions) share one transaction.
   return prisma.$transaction(
     async (tx) => {
-      const evaluated = await evaluate(tx);
+      const { evaluated, factors } = await evaluate(tx);
       const summary = summarize(evaluated, { fileName, dryRun: false, imported: true });
       if (summary.invalidRows > 0 && !skipInvalidRows) {
         throw ApiError.badRequest(
@@ -316,7 +365,14 @@ export async function importActivitiesCsv({ factory, file, dryRun = false, skipI
 
       const data = evaluated.flatMap((row) => row.records).map(({ processName: _processName, ...record }) => record);
       for (let start = 0; start < data.length; start += INSERT_CHUNK_SIZE) {
-        await tx.activity.createMany({ data: data.slice(start, start + INSERT_CHUNK_SIZE) });
+        const created = await tx.activity.createManyAndReturn({
+          data: data.slice(start, start + INSERT_CHUNK_SIZE),
+          select: { id: true, energy_type: true, unit: true, quantity: true },
+        });
+        // Each emission is derived from its own returned row, so nothing depends on RETURNING order.
+        await tx.emission.createMany({
+          data: created.map((activity) => buildEmissionData(activity, getFactor(factors, activity.energy_type, activity.unit))),
+        });
       }
       return summary;
     },

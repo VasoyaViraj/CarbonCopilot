@@ -227,11 +227,21 @@ POST /api/processes/:id/activities
   "productionUnit": "tonnes",
   "source": "MANUAL",
   "isSimulated": false,
-  "createdAt": "2026-09-12T10:00:00.000Z"
+  "createdAt": "2026-09-12T10:00:00.000Z",
+  "emission": {
+    "id": 70,
+    "co2eValue": 570,
+    "co2eUnit": "kgCO2e",
+    "emissionFactorId": 5,
+    "calculationMethod": "CO2e = activity quantity × emission factor",
+    "calculatedAt": "2026-09-12T10:00:00.000Z"
+  }
 }
 ```
 
 `isSimulated` is `true` for every `SIMULATION` activity (BR-12).
+
+The activity and its deterministic emission (§6) are written in one transaction. If no emission factor exists for the type and unit, the request fails with `400 VALIDATION_ERROR` ("No emission factor is configured for …") and nothing is stored. `emission` is the activity's latest calculation, and list responses include it too.
 
 ### List
 
@@ -286,13 +296,25 @@ Summary (`200` for a dry run, `201` when imported):
   "validRows": 28,
   "invalidRows": 2,
   "activityCount": 61,
+  "co2e": { "value": 48210.5, "unit": "kgCO2e" },
   "errors": [{ "row": 7, "field": "process", "message": "Unknown process \"Kiln\" — add it in Factory Setup first" }],
   "errorsTruncated": false,
-  "preview": [{ "row": 2, "processName": "Furnace", "activityDate": "2026-09-01T00:00:00.000Z", "energyType": "ELECTRICITY", "quantity": 1200, "unit": "kWh", "productionQuantity": 8, "productionUnit": "tonnes" }]
+  "preview": [{ "row": 2, "processName": "Furnace", "activityDate": "2026-09-01T00:00:00.000Z", "energyType": "ELECTRICITY", "quantity": 1200, "unit": "kWh", "productionQuantity": 8, "productionUnit": "tonnes", "co2eValue": 840, "co2eUnit": "kgCO2e" }]
 }
 ```
 
 ## 6. Emissions
+
+The deterministic carbon engine (`backend/src/services/carbon.service.js`, BR-01/BR-02) runs as part of ingestion:
+
+- **Calculation:** `CO2e = quantity × factor`, with no LLM involved.
+- **Storage:** manual entries, simulated readings and CSV imports store each activity and its emission in the same transaction. The emission records the factor used (`emission_factor_id`) and the calculation method.
+- **Factor choice:** the newest factor by year for the activity's type and canonical unit, with the id as a deterministic tie-break.
+- **Missing factor:** a manual entry fails with `400`; a CSV row becomes a row error.
+- **Recalculation:** recalculating an activity replaces its emission rather than duplicating it.
+- **Backfill:** `npm run emissions:backfill` calculates emissions for any activities stored without one.
+
+The endpoints below arrive with the Carbon Dashboard (Phase 7).
 
 ```http
 POST /api/emissions/calculate

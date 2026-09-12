@@ -35,14 +35,57 @@ const valid = {
 const post = (body, processId = 9) =>
   request(app).post(`/api/processes/${processId}/activities`).set('Authorization', bearer).send(body);
 
+const FACTORS = {
+  NATURAL_GAS: { id: 5, category: 'FUEL', fuel_type: 'NATURAL_GAS', unit: 'm3', factor: 1.9, co2e_unit: 'kgCO2e' },
+  ELECTRICITY: { id: 1, category: 'ENERGY', fuel_type: 'ELECTRICITY', unit: 'kWh', factor: 0.7, co2e_unit: 'kgCO2e' },
+};
+const METHOD = 'CO2e = activity quantity × emission factor';
+
 beforeEach(() => {
   vi.clearAllMocks();
   asUser();
+  prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
   prisma.process.findFirst.mockResolvedValue({ id: 9, factory_id: 3, name: 'Furnace' });
   prisma.activity.create.mockImplementation(async ({ data }) => stored(data));
+  prisma.emissionFactor.findFirst.mockImplementation(async ({ where }) => {
+    const factor = FACTORS[where.fuel_type];
+    return factor && factor.unit === where.unit ? factor : null;
+  });
+  prisma.emission.create.mockImplementation(async ({ data }) => ({ id: 70, calculated_at: new Date('2026-09-12T10:00:00Z'), ...data }));
 });
 
 describe('POST /api/processes/:id/activities', () => {
+  it('calculates and stores the deterministic emission in the same transaction', async () => {
+    const res = await post(valid);
+
+    expect(res.status).toBe(201);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.emissionFactor.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { category: 'FUEL', fuel_type: 'NATURAL_GAS', unit: 'm3' } })
+    );
+    expect(prisma.emission.create).toHaveBeenCalledWith({
+      data: { activity_id: 101, emission_factor_id: 5, co2e_value: 570, co2e_unit: 'kgCO2e', calculation_method: METHOD },
+    });
+    expect(res.body.data.emission).toEqual({
+      id: 70,
+      co2eValue: 570,
+      co2eUnit: 'kgCO2e',
+      emissionFactorId: 5,
+      calculationMethod: METHOD,
+      calculatedAt: '2026-09-12T10:00:00.000Z',
+    });
+  });
+
+  it('stores nothing when no emission factor is configured for the type', async () => {
+    prisma.emissionFactor.findFirst.mockResolvedValue(null);
+    const res = await post(valid);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toBe('No emission factor is configured for NATURAL_GAS in m3');
+    expect(prisma.activity.create).not.toHaveBeenCalled();
+    expect(prisma.emission.create).not.toHaveBeenCalled();
+  });
+
   it('creates a manual activity with a normalised type, unit and UTC date', async () => {
     const res = await post({ ...valid, energyType: 'Natural gas', unit: 'M3' });
 

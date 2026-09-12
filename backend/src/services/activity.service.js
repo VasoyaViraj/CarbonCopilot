@@ -1,10 +1,16 @@
 import prisma from '../db/db.js';
 import { ACTIVITY_SOURCES } from '../constants.js';
 import { ACTIVITY_TYPES } from '../config/activityCatalog.js';
+import { buildEmissionData, findEmissionFactor, toEmissionDto } from './carbon.service.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const activityInclude = { process: { select: { id: true, name: true } } };
+const processSelect = { select: { id: true, name: true } };
+// Each activity carries its latest calculated emission, so clients display backend-calculated CO2e.
+const activityInclude = {
+  process: processSelect,
+  emissions: { orderBy: [{ calculated_at: 'desc' }, { id: 'desc' }], take: 1 },
+};
 
 /** API view of an activity. Simulated readings are always flagged (BR-12). */
 export function toActivityDto(activity) {
@@ -22,25 +28,33 @@ export function toActivityDto(activity) {
     source: activity.source,
     isSimulated: activity.source === ACTIVITY_SOURCES.SIMULATION,
     createdAt: activity.created_at.toISOString(),
+    emission: toEmissionDto(activity.emissions?.[0]),
   };
 }
 
-/** `input` is the normalised output of createActivitySchema. */
+/**
+ * Stores a normalised activity (output of createActivitySchema) and its deterministic emission
+ * in one transaction. The factor is resolved first, so an activity is never stored without it.
+ */
 export async function createActivity(processId, input) {
-  const activity = await prisma.activity.create({
-    data: {
-      process_id: processId,
-      activity_date: input.activityDate,
-      energy_type: input.energyType,
-      quantity: input.quantity,
-      unit: input.unit,
-      production_quantity: input.productionQuantity,
-      production_unit: input.productionUnit,
-      source: input.source,
-    },
-    include: activityInclude,
+  return prisma.$transaction(async (tx) => {
+    const factor = await findEmissionFactor({ activityType: input.energyType, unit: input.unit }, tx);
+    const activity = await tx.activity.create({
+      data: {
+        process_id: processId,
+        activity_date: input.activityDate,
+        energy_type: input.energyType,
+        quantity: input.quantity,
+        unit: input.unit,
+        production_quantity: input.productionQuantity,
+        production_unit: input.productionUnit,
+        source: input.source,
+      },
+      include: { process: processSelect },
+    });
+    const emission = await tx.emission.create({ data: buildEmissionData(activity, factor) });
+    return toActivityDto({ ...activity, emissions: [emission] });
   });
-  return toActivityDto(activity);
 }
 
 /**

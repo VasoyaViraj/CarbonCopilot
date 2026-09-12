@@ -12,11 +12,21 @@ vi.mock('../src/db/db.js', async () => {
 
 const { default: app } = await import('../src/app.js');
 const { REQUIRED_COLUMNS } = await import('../src/services/csvIngestion.service.js');
+const { CALCULATION_METHOD } = await import('../src/services/carbon.service.js');
 const prisma = prismaMock.current;
 
 const bearer = `Bearer ${jwt.sign({}, process.env.JWT_SECRET, { subject: '5', algorithm: 'HS256' })}`;
 const asUser = (role = 'FACTORY_OPERATOR', organizationId = 1) =>
   prisma.user.findUnique.mockResolvedValue({ id: 5, name: 'U', email: 'u@example.com', role, organization_id: organizationId });
+
+const factor = (id, category, fuel_type, unit, value) => ({ id, category, fuel_type, unit, factor: value, co2e_unit: 'kgCO2e', year: 2026 });
+const SEED_FACTORS = [
+  factor(1, 'ENERGY', 'ELECTRICITY', 'kWh', 0.7),
+  factor(2, 'FUEL', 'NATURAL_GAS', 'm3', 1.9),
+  factor(3, 'FUEL', 'DIESEL', 'L', 2.68),
+  factor(5, 'MATERIAL', 'VIRGIN_ALUMINUM', 'tonne', 11500),
+  factor(8, 'WASTE', 'WASTE_LANDFILL', 'tonne', 470),
+];
 
 const FULL_HEADER =
   'date,process,energy,energy_type,energy_unit,fuel,fuel_type,fuel_unit,material,material_type,material_unit,waste,waste_type,waste_unit,production,production_unit';
@@ -44,7 +54,9 @@ beforeEach(() => {
     { id: 12, name: 'Waste' },
   ]);
   prisma.activity.findMany.mockResolvedValue([]);
-  prisma.activity.createMany.mockImplementation(async ({ data }) => ({ count: data.length }));
+  prisma.emissionFactor.findMany.mockResolvedValue(SEED_FACTORS);
+  prisma.activity.createManyAndReturn.mockImplementation(async ({ data }) => data.map((row, index) => ({ id: 500 + index, ...row })));
+  prisma.emission.createMany.mockImplementation(async ({ data }) => ({ count: data.length }));
 });
 
 describe('POST /api/activities/upload — valid files', () => {
@@ -54,7 +66,7 @@ describe('POST /api/activities/upload — valid files', () => {
     '2026-09-01,transport,,,,40,Diesel,litres,,,,,,,,'
   );
 
-  it('validates without writing on a dry run', async () => {
+  it('validates without writing on a dry run and estimates CO2e with the carbon engine', async () => {
     const res = await upload({ body: file, fields: { dryRun: 'true' } });
 
     expect(res.status).toBe(200);
@@ -68,24 +80,40 @@ describe('POST /api/activities/upload — valid files', () => {
       activityCount: 3,
       errors: [],
     });
-    expect(res.body.data.preview[0]).toMatchObject({ row: 2, processName: 'Furnace', energyType: 'ELECTRICITY', productionQuantity: 8 });
+    expect(res.body.data.co2e.unit).toBe('kgCO2e');
+    expect(res.body.data.co2e.value).toBeCloseTo(840 + 570 + 107.2);
+    expect(res.body.data.preview[0]).toMatchObject({
+      row: 2,
+      processName: 'Furnace',
+      energyType: 'ELECTRICITY',
+      productionQuantity: 8,
+      co2eValue: 840,
+      co2eUnit: 'kgCO2e',
+    });
     expect(prisma.factory.findFirst).toHaveBeenCalledWith({ where: { id: 3, organization_id: 1 } });
     expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(prisma.activity.createMany).not.toHaveBeenCalled();
+    expect(prisma.activity.createManyAndReturn).not.toHaveBeenCalled();
+    expect(prisma.emission.createMany).not.toHaveBeenCalled();
   });
 
-  it('imports every row in one transaction, recording production once per row', async () => {
+  it('imports activities and their emissions in one transaction, recording production once per row', async () => {
     const res = await upload({ body: file });
 
     expect(res.status).toBe(201);
     expect(res.body.data).toMatchObject({ imported: true, validRows: 2, activityCount: 3 });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(prisma.activity.createMany).toHaveBeenCalledTimes(1);
+    expect(prisma.activity.createManyAndReturn).toHaveBeenCalledTimes(1);
     const day = new Date('2026-09-01T00:00:00.000Z');
-    expect(prisma.activity.createMany.mock.calls[0][0].data).toEqual([
+    expect(prisma.activity.createManyAndReturn.mock.calls[0][0].data).toEqual([
       { process_id: 9, activity_date: day, energy_type: 'ELECTRICITY', quantity: 1200, unit: 'kWh', production_quantity: 8, production_unit: 'tonnes', source: 'CSV' },
       { process_id: 9, activity_date: day, energy_type: 'NATURAL_GAS', quantity: 300, unit: 'm3', production_quantity: null, production_unit: null, source: 'CSV' },
       { process_id: 11, activity_date: day, energy_type: 'DIESEL', quantity: 40, unit: 'L', production_quantity: null, production_unit: null, source: 'CSV' },
+    ]);
+    const method = { co2e_unit: 'kgCO2e', calculation_method: CALCULATION_METHOD };
+    expect(prisma.emission.createMany.mock.calls[0][0].data).toEqual([
+      { activity_id: 500, emission_factor_id: 1, co2e_value: 840, ...method },
+      { activity_id: 501, emission_factor_id: 2, co2e_value: 570, ...method },
+      { activity_id: 502, emission_factor_id: 3, co2e_value: expect.closeTo(107.2), ...method },
     ]);
   });
 
@@ -143,7 +171,8 @@ describe('POST /api/activities/upload — row-level validation', () => {
       ])
     );
     expect(details.some((d) => d.row === 2)).toBe(false);
-    expect(prisma.activity.createMany).not.toHaveBeenCalled();
+    expect(prisma.activity.createManyAndReturn).not.toHaveBeenCalled();
+    expect(prisma.emission.createMany).not.toHaveBeenCalled();
   });
 
   it('reports the same errors on a dry run', async () => {
@@ -159,7 +188,8 @@ describe('POST /api/activities/upload — row-level validation', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data).toMatchObject({ imported: true, validRows: 1, invalidRows: 8, activityCount: 2 });
-    expect(prisma.activity.createMany.mock.calls[0][0].data.map((a) => a.energy_type)).toEqual(['ELECTRICITY', 'NATURAL_GAS']);
+    expect(prisma.activity.createManyAndReturn.mock.calls[0][0].data.map((a) => a.energy_type)).toEqual(['ELECTRICITY', 'NATURAL_GAS']);
+    expect(prisma.emission.createMany.mock.calls[0][0].data).toHaveLength(2);
   });
 
   it('refuses rows that duplicate existing activities or earlier rows', async () => {
@@ -180,6 +210,17 @@ describe('POST /api/activities/upload — row-level validation', () => {
     expect(prisma.activity.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ process_id: { in: [9] } }) })
     );
+  });
+
+  it('rejects rows whose activity type has no emission factor configured', async () => {
+    prisma.emissionFactor.findMany.mockResolvedValue(SEED_FACTORS.filter((f) => f.fuel_type !== 'DIESEL'));
+    const res = await upload({
+      body: csv(HEADER, '2026-09-01,Transport,,40,DIESEL,,,', '2026-09-01,Furnace,100,,,,,'),
+      fields: { dryRun: 'true' },
+    });
+
+    expect(res.body.data).toMatchObject({ validRows: 1, invalidRows: 1 });
+    expect(res.body.data.errors).toEqual([{ row: 2, field: 'fuel', message: 'No emission factor is configured for DIESEL in L' }]);
   });
 
   it('rejects process names that match more than one process', async () => {
@@ -224,7 +265,7 @@ describe('POST /api/activities/upload — file-level validation', () => {
     const res = await upload({ body });
     expect(res.status).toBe(400);
     expect(res.body.error.message).toMatch(message);
-    expect(prisma.activity.createMany).not.toHaveBeenCalled();
+    expect(prisma.activity.createManyAndReturn).not.toHaveBeenCalled();
   });
 
   it('rejects files over the row limit', async () => {
@@ -275,7 +316,7 @@ describe('POST /api/activities/upload — authorization', () => {
 
     expect(res.status).toBe(404);
     expect(prisma.process.findMany).not.toHaveBeenCalled();
-    expect(prisma.activity.createMany).not.toHaveBeenCalled();
+    expect(prisma.activity.createManyAndReturn).not.toHaveBeenCalled();
   });
 
   it('requires a factory ID', async () => {
