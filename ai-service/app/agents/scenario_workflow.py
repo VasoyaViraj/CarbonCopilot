@@ -287,14 +287,14 @@ def build_scenario_evidence(
     result = tool_results.get("scenario_result") or {}
 
     # normalise camelCase / snake_case keys from Express
-    baseline = result.get("baselineEmission") or result.get("baseline_emission")
-    projected = result.get("projectedEmission") or result.get("projected_emission")
-    reduction = result.get("reductionAmount") or result.get("reduction_amount")
-    reduction_pct = result.get("reductionPercent") or result.get("reduction_percent")
-    cost = result.get("estimatedCost") or result.get("estimated_cost")
-    savings = result.get("estimatedSavings") or result.get("estimated_savings")
-    payback = result.get("paybackPeriod") or result.get("payback_period")
-    unit = result.get("co2eUnit") or result.get("co2e_unit") or "tCO2e"
+    baseline = result.get("baselineEmission") if "baselineEmission" in result else result.get("baseline_emission")
+    projected = result.get("projectedEmission") if "projectedEmission" in result else result.get("projected_emission")
+    reduction = result.get("reductionAmount") if "reductionAmount" in result else result.get("reduction_amount")
+    reduction_pct = result.get("reductionPercent") if "reductionPercent" in result else result.get("reduction_percent")
+    cost = result.get("estimatedCost") if "estimatedCost" in result else result.get("estimated_cost")
+    savings = result.get("estimatedSavings") if "estimatedSavings" in result else result.get("estimated_savings")
+    payback = result.get("paybackPeriod") if "paybackPeriod" in result else result.get("payback_period")
+    unit = result.get("co2eUnit") if "co2eUnit" in result else (result.get("co2e_unit") or "tCO2e")
 
     ev = ScenarioEvidence(
         recycled_material_percent=params.get("recycled_material_percent", 0.0),
