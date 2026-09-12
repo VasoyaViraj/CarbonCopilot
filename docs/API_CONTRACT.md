@@ -164,12 +164,34 @@ Request:
 ## 5. Activities
 
 ```http
+GET  /api/activities/types
 POST /api/processes/:id/activities
 GET  /api/processes/:id/activities
+GET  /api/factories/:id/activities
 POST /api/activities/upload
 ```
 
-Activity:
+Writing activities requires `ADMIN` or `FACTORY_OPERATOR`; every role in the organization may read them. Processes and factories outside the caller's organization return `404 NOT_FOUND`.
+
+### Supported activity types
+
+`GET /api/activities/types` returns the catalog used by every ingestion path. Each type maps to an emission factor, and units are normalised to the factor's canonical unit (`kwh` → `kWh`, `litres` → `L`). Units are never converted; a unit that isn't a spelling of the canonical unit is rejected.
+
+| Category | Types | Unit |
+|---|---|---|
+| ENERGY | `ELECTRICITY` | kWh |
+| FUEL | `NATURAL_GAS` / `DIESEL` / `LPG` | m3 / L / kg |
+| MATERIAL | `VIRGIN_ALUMINUM`, `RECYCLED_ALUMINUM`, `STEEL` | tonne |
+| WASTE | `WASTE_LANDFILL`, `WASTE_RECYCLED` | tonne |
+
+Production units: `tonnes` (default when omitted), `kg`, `units`.
+
+### Create (manual or simulated)
+
+```http
+POST /api/processes/:id/activities
+```
+
 ```json
 {
   "activityDate": "2026-09-12",
@@ -182,15 +204,91 @@ Activity:
 }
 ```
 
-CSV upload should validate:
-```text
-date
-process
-energy
-fuel
-material
-production
-waste
+- `activityDate`: `YYYY-MM-DD` (stored as UTC midnight) or an ISO-8601 timestamp with timezone. It must be a real date, not before 2000-01-01, and not in the future.
+- `quantity`: a JSON number greater than 0 and no larger than the type's plausibility ceiling (which catches unit mistakes).
+- `unit`: optional. It defaults to the type's canonical unit.
+- `productionQuantity`: optional, a number ≥ 0. Record production once per process and period so it isn't double counted.
+- `source`: `MANUAL` (default) or `SIMULATION`. `CSV` is rejected here because CSV rows must go through the upload pipeline.
+
+`201` response (the same shape is used by the list endpoints):
+
+```json
+{
+  "id": 101,
+  "processId": 7,
+  "processName": "Furnace",
+  "activityDate": "2026-09-12T00:00:00.000Z",
+  "energyType": "NATURAL_GAS",
+  "category": "FUEL",
+  "quantity": 300,
+  "unit": "m3",
+  "productionQuantity": 8,
+  "productionUnit": "tonnes",
+  "source": "MANUAL",
+  "isSimulated": false,
+  "createdAt": "2026-09-12T10:00:00.000Z"
+}
+```
+
+`isSimulated` is `true` for every `SIMULATION` activity (BR-12).
+
+### List
+
+```http
+GET /api/processes/:id/activities
+GET /api/factories/:id/activities
+```
+
+Query: `from`, `to` (inclusive `YYYY-MM-DD`), `source`, `energyType`, `limit` (1–200, default 50), `offset`. The response is `{ "items": [Activity], "total", "limit", "offset" }`, newest first.
+
+### CSV upload
+
+```http
+GET  /api/activities/template   → text/csv (header + example rows; also data/templates/activities-template.csv)
+POST /api/activities/upload     → multipart/form-data
+```
+
+Form fields: `file` (one `.csv` file, UTF-8, up to `MAX_UPLOAD_SIZE_MB`), `factoryId`, `dryRun` (`true`/`false`, default `false`), `skipInvalidRows` (`true`/`false`, default `false`).
+
+Columns (the header is case-insensitive):
+
+| Column | Required | Meaning |
+|---|---|---|
+| `date` | yes | `YYYY-MM-DD` |
+| `process` | yes | Name of an existing process in the factory (case-insensitive) |
+| `energy`, `fuel`, `material`, `waste` | header yes, values optional | Quantity for that category. Each filled cell becomes one activity |
+| `energy_type`, `fuel_type`, `material_type`, `waste_type` | no | Activity type within the category. Required when the quantity is filled, except energy, which defaults to `ELECTRICITY` |
+| `energy_unit`, `fuel_unit`, `material_unit`, `waste_unit` | no | Must be the type's canonical unit when given |
+| `production` | yes (header) | Production quantity for the row, stored once on the row's first activity |
+| `production_unit` | no | `tonnes` (default), `kg`, `units` |
+
+How rows are handled:
+
+- **Unknown or duplicate columns**, or a missing required column, reject the file.
+- **Limits:** more than 5000 data rows, binary content, or a file that isn't UTF-8 also reject the file.
+- **Row validation:** each row is validated on its own. A row with any error is never written and is reported as `{ "row", "field", "message" }`, where `row` is the spreadsheet line number.
+- **Duplicates:** a row whose activity exactly matches an existing activity (same process, date, type and quantity), or an earlier row in the file, is invalid. Re-uploading a file therefore cannot double-count emissions.
+- **Atomic import:** validation, duplicate checks, and inserts run in one transaction, so an import is all-or-nothing.
+- **Invalid rows and the flags:**
+  - With `dryRun=true`, nothing is written and the summary is returned with `200`.
+  - With `skipInvalidRows=false` (the default), any invalid row aborts the import: `400 VALIDATION_ERROR`, with the row errors in `details`.
+  - With `skipInvalidRows=true`, only valid rows are imported and invalid rows are reported.
+
+Summary (`200` for a dry run, `201` when imported):
+
+```json
+{
+  "fileName": "september.csv",
+  "dryRun": false,
+  "imported": true,
+  "totalRows": 30,
+  "validRows": 28,
+  "invalidRows": 2,
+  "activityCount": 61,
+  "errors": [{ "row": 7, "field": "process", "message": "Unknown process \"Kiln\" — add it in Factory Setup first" }],
+  "errorsTruncated": false,
+  "preview": [{ "row": 2, "processName": "Furnace", "activityDate": "2026-09-01T00:00:00.000Z", "energyType": "ELECTRICITY", "quantity": 1200, "unit": "kWh", "productionQuantity": 8, "productionUnit": "tonnes" }]
+}
 ```
 
 ## 6. Emissions

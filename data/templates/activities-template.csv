@@ -1,0 +1,4 @@
+date,process,energy,energy_type,energy_unit,fuel,fuel_type,fuel_unit,material,material_type,material_unit,waste,waste_type,waste_unit,production,production_unit
+2026-09-01,Furnace,1200,ELECTRICITY,kWh,300,NATURAL_GAS,m3,2,VIRGIN_ALUMINUM,tonne,,,,8,tonnes
+2026-09-01,Transport,,,,40,DIESEL,L,,,,,,,,
+2026-09-01,Waste,,,,,,,,,,0.5,WASTE_LANDFILL,tonne,,
