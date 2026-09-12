@@ -32,3 +32,13 @@ export async function getAuthorizedProcess(user, processId) {
   if (!process) throw ApiError.notFound('Process');
   return process;
 }
+
+/** Loads an activity only if its process's factory belongs to the caller's organization. */
+export async function getAuthorizedActivity(user, activityId) {
+  const id = parseId(activityId, 'activityId');
+  const activity = await prisma.activity.findFirst({
+    where: { id, process: { factory: { organization_id: user.organizationId } } },
+  });
+  if (!activity) throw ApiError.notFound('Activity');
+  return activity;
+}

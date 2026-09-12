@@ -8,49 +8,6 @@
  */
 import type { CostLevel, Severity } from "@/types/domain"
 
-export const mockKpis = {
-  totalEmissions: 1250,
-  emissionUnit: "tCO2e",
-  production: 10000,
-  productionUnit: "tonnes",
-  emissionIntensity: 0.125,
-  intensityUnit: "tCO2e/tonne",
-}
-
-export const mockEmissionsByProcess = [
-  { label: "Furnace", value: 520 },
-  { label: "Electricity", value: 250 },
-  { label: "Boiler", value: 180 },
-  { label: "Transport", value: 80 },
-  { label: "Waste", value: 70 },
-]
-
-export const mockEmissionsBySource = [
-  { label: "Natural gas", value: 610 },
-  { label: "Electricity", value: 430 },
-  { label: "Diesel", value: 110 },
-  { label: "Waste", value: 70 },
-  { label: "Materials", value: 30 },
-]
-
-export const mockEmissionHistory = [
-  { label: "Apr", value: 98 },
-  { label: "May", value: 104 },
-  { label: "Jun", value: 101 },
-  { label: "Jul", value: 110 },
-  { label: "Aug", value: 106 },
-  { label: "Sep", value: 104 },
-]
-
-export const mockElectricityHistory = [
-  { label: "Apr", value: 68000 },
-  { label: "May", value: 71000 },
-  { label: "Jun", value: 70500 },
-  { label: "Jul", value: 74200 },
-  { label: "Aug", value: 72100 },
-  { label: "Sep", value: 70900 },
-]
-
 export const mockHotspots: {
   processId: number
   process: string

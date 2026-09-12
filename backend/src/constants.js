@@ -24,3 +24,9 @@ export const ACTIVITY_SOURCES = Object.freeze({
   CSV: 'CSV',
   SIMULATION: 'SIMULATION',
 });
+
+/** Bucket sizes for the dashboard's historical emissions series. */
+export const HISTORY_GRANULARITIES = Object.freeze(['day', 'month']);
+
+/** Longest range a daily series may span, which keeps gap-filled series bounded. */
+export const MAX_DAILY_HISTORY_DAYS = 366;

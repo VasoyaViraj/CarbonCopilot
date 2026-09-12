@@ -135,18 +135,34 @@ export function toEmissionDto(emission) {
   };
 }
 
+async function storeActivityEmission(activityId, tx) {
+  const activity = await tx.activity.findUnique({ where: { id: activityId } });
+  if (!activity) throw ApiError.notFound('Activity');
+  const factor = await findEmissionFactor({ activityType: activity.energy_type, unit: activity.unit }, tx);
+  await tx.emission.deleteMany({ where: { activity_id: activity.id } });
+  const emission = await tx.emission.create({ data: buildEmissionData(activity, factor) });
+  return { activity, factor, emission };
+}
+
+// Accepts a transaction client to run inside a caller's transaction.
+const inTransaction = (db, run) => (typeof db.$transaction === 'function' ? db.$transaction(run) : run(db));
+
 /**
  * (Re)calculates and stores the emission of one persisted activity. Idempotent: an existing
  * emission for the activity is replaced rather than duplicated, so totals never double count.
- * Accepts a transaction client to run inside a caller's transaction.
  */
 export async function processActivityEmission(activityId, db = prisma) {
-  const run = async (tx) => {
-    const activity = await tx.activity.findUnique({ where: { id: activityId } });
-    if (!activity) throw ApiError.notFound('Activity');
-    const factor = await findEmissionFactor({ activityType: activity.energy_type, unit: activity.unit }, tx);
-    await tx.emission.deleteMany({ where: { activity_id: activity.id } });
-    return tx.emission.create({ data: buildEmissionData(activity, factor) });
-  };
-  return typeof db.$transaction === 'function' ? db.$transaction(run) : run(db);
+  return inTransaction(db, async (tx) => (await storeActivityEmission(activityId, tx)).emission);
+}
+
+/** Same as processActivityEmission, but returns the full calculation alongside the stored emission. */
+export async function recalculateActivityEmission(activityId, db = prisma) {
+  return inTransaction(db, async (tx) => {
+    const { activity, factor, emission } = await storeActivityEmission(activityId, tx);
+    return {
+      activityId: activity.id,
+      ...toCalculationResult({ activityType: activity.energy_type, quantity: activity.quantity, unit: activity.unit }, factor),
+      emission: toEmissionDto(emission),
+    };
+  });
 }

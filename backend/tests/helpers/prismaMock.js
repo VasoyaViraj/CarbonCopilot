@@ -12,11 +12,12 @@ export function createPrismaMock() {
       createMany: vi.fn(),
       createManyAndReturn: vi.fn(),
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
     },
     emissionFactor: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
-    emission: { create: vi.fn(), createMany: vi.fn(), deleteMany: vi.fn() },
+    emission: { create: vi.fn(), createMany: vi.fn(), deleteMany: vi.fn(), findMany: vi.fn(), count: vi.fn() },
     $transaction: vi.fn(),
     $queryRaw: vi.fn(),
   };

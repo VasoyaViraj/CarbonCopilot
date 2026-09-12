@@ -12,6 +12,15 @@ export function formatYears(value: number | null | undefined): string {
   return value == null ? "N/A" : `${formatNumber(value, 1)} years`
 }
 
+/** API period key (YYYY-MM or YYYY-MM-DD, UTC) as a short chart label: "Sep 2026" or "Sep 12". */
+export function formatPeriod(key: string): string {
+  const [year, month, day] = key.split("-").map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day || 1))
+  return day
+    ? date.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" })
+    : date.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", year: "numeric" })
+}
+
 /** Local calendar date as YYYY-MM-DD (the value format of <input type="date">). */
 export function toIsoDate(date: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0")
