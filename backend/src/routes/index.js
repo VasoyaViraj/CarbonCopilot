@@ -6,6 +6,7 @@ import activityRoutes from './activity.routes.js';
 import emissionRoutes from './emission.routes.js';
 import anomalyRoutes from './anomaly.routes.js';
 import hotspotRoutes from './hotspot.routes.js';
+import recommendationRoutes from './recommendation.routes.js';
 
 const router = express.Router();
 
@@ -17,6 +18,7 @@ router.use(activityRoutes);
 router.use(emissionRoutes);
 router.use(anomalyRoutes);
 router.use(hotspotRoutes);
+router.use(recommendationRoutes);
 router.use('/factories', factoryRoutes);
 
 export default router;
