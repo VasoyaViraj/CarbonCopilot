@@ -15,7 +15,15 @@ const envSchema = z.object({
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
   API_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
-});
+  // Hotspot severity thresholds as % of total emissions (BR-04).
+  HOTSPOT_CRITICAL_PERCENT: z.coerce.number().gt(0).lt(100).default(40),
+  HOTSPOT_HIGH_PERCENT: z.coerce.number().gt(0).lt(100).default(25),
+  HOTSPOT_MEDIUM_PERCENT: z.coerce.number().gt(0).lt(100).default(10),
+}).refine(
+  (config) =>
+    config.HOTSPOT_CRITICAL_PERCENT > config.HOTSPOT_HIGH_PERCENT && config.HOTSPOT_HIGH_PERCENT > config.HOTSPOT_MEDIUM_PERCENT,
+  { path: ['HOTSPOT_CRITICAL_PERCENT'], message: 'Hotspot thresholds must satisfy CRITICAL > HIGH > MEDIUM' }
+);
 
 const parsed = envSchema.safeParse(process.env);
 

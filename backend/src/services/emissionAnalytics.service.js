@@ -25,7 +25,7 @@ const TYPE_ORDER = Object.keys(ACTIVITY_TYPES);
 const LATEST_EMISSION = { orderBy: [{ calculated_at: 'desc' }, { id: 'desc' }], take: 1 };
 
 // Rounds away float noise (0.1 + 0.2) so identical inputs always serialise identically.
-const round = (value, digits = 6) => {
+export const round = (value, digits = 6) => {
   const scale = 10 ** digits;
   return Math.round(value * scale) / scale;
 };
@@ -256,23 +256,36 @@ const summarySelect = {
 };
 
 /**
+ * A factory's activities (each with its latest stored emission) and processes, narrowed by the
+ * shared filters (from/to inclusive days, source). The factory must already be authorized.
+ */
+export async function loadFactoryActivities(factory, query) {
+  const [activities, processes] = await Promise.all([
+    prisma.activity.findMany({ where: activityWhere({ factoryId: factory.id }, query), select: summarySelect }),
+    prisma.process.findMany({
+      where: { factory_id: factory.id },
+      select: { id: true, name: true, process_type: true, description: true },
+    }),
+  ]);
+  return { activities, processes };
+}
+
+/** The date/source filters echoed back by analytics responses. */
+export const describeFilters = (query) => ({
+  from: toDateOnly(query.from),
+  to: toDateOnly(query.to),
+  source: query.source ?? null,
+});
+
+/**
  * Dashboard summary for a factory the caller is already authorized for. Filters: from/to
  * (inclusive days), source, granularity (day | month).
  */
 export async function getEmissionSummary(factory, query) {
-  const [activities, processes] = await Promise.all([
-    prisma.activity.findMany({ where: activityWhere({ factoryId: factory.id }, query), select: summarySelect }),
-    prisma.process.findMany({ where: { factory_id: factory.id }, select: { id: true, name: true } }),
-  ]);
-
+  const { activities, processes } = await loadFactoryActivities(factory, query);
   return {
     factory: { id: factory.id, name: factory.name },
-    filters: {
-      from: toDateOnly(query.from),
-      to: toDateOnly(query.to),
-      source: query.source ?? null,
-      granularity: query.granularity,
-    },
+    filters: { ...describeFilters(query), granularity: query.granularity },
     ...summarizeEmissions({ activities, processes, granularity: query.granularity, from: query.from, to: query.to }),
   };
 }

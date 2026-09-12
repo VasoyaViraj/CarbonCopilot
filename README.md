@@ -11,7 +11,7 @@ Operational Data → Deterministic Carbon Engine → Hotspot Detection → Agent
 
 ## Hackathon sensor constraint
 
-There is no physical hardware at the hackathon. The MVP ingests **manual**, **CSV**, and **simulated** readings. Simulated readings are always labelled as simulated, and the product never claims physical leak detection. The ingestion boundary is sensor-ready: future IoT/MQTT data enters at the same point without redesigning downstream logic.
+There is no physical hardware at the hackathon. The MVP ingests **manual**, **CSV**, and **simulated** readings. Simulated readings are always labelled as simulated, and the product never claims physical leak detection. Software-based anomaly signals calculate deviations in emission intensity (CO2e/production unit) against historical baselines; they serve as an investigation signal rather than asserting physical equipment failure. The ingestion boundary is sensor-ready: future IoT/MQTT data enters at the same point without redesigning downstream logic.
 
 ## Architecture
 
