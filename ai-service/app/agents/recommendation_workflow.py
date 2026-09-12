@@ -4,14 +4,17 @@
     → fetch_circular_alternatives → calculate_impact
     → rank_interventions → generate_response
 
-Workflow rules (ADR-003 / BUSINESS_RULES):
-- Every score, reduction %, cost level and payback comes from the deterministic
-  Express backend or the circular knowledge-base. The LLM explains the ranking;
-  it never invents numerical values.
-- Recommendations are decision-support; they are presented as estimated /
-  projected, never as guaranteed outcomes.
-- A recommendation set with zero items is a valid result — the workflow
-  surfaces it as missing data, not an error.
+Every number comes from the Express recommendation service (BR-06):
+- circular alternatives are matched to the factory's recorded emissions by the
+  backend's fixed rule table, not by the AI;
+- estimated reduction, CO2e savings, cost level, payback and the weighted score
+  are calculated and stored by that service;
+- this workflow only selects, orders and explains them. It performs no
+  arithmetic, so it can never attach a reduction to emissions an alternative
+  does not target.
+
+Recommendations are decision support, presented as estimated / projected.
+A factory without recommendations is a valid result, reported as missing data.
 """
 
 import logging
@@ -21,9 +24,8 @@ from pydantic import BaseModel, Field
 
 from app.agents.intent_router import GENERATE_RESPONSE, Intent
 from app.agents.state import AgentState
-from app.mcp.tools.circular import find_circular_alternatives
 from app.mcp.tools.hotspots import get_hotspot_ranking
-from app.mcp.tools.scenario import rank_interventions
+from app.mcp.tools.recommendations import get_recommendations
 from app.schemas.ai_response import ConfidenceLevel
 
 logger = logging.getLogger("ecotrace.ai.recommendation_workflow")
@@ -36,10 +38,12 @@ FETCH_ALTERNATIVES = "recommendation_fetch_alternatives"
 CALCULATE_IMPACT = "recommendation_calculate_impact"
 RANK_INTERVENTIONS = "recommendation_rank_interventions"
 
+# Interventions a person has not already rejected or implemented.
+_OPEN_STATUSES = {None, "PENDING", "ACCEPTED"}
+# How many ranked interventions the response explains.
+MAX_INTERVENTIONS = 5
 
-# ---------------------------------------------------------------------------
-# Routing
-# ---------------------------------------------------------------------------
+
 def route_after_factory_data_rec(state: AgentState) -> str:
     """Conditional edge: only RECOMMENDATION intent runs this workflow."""
     if state.get("intent") == Intent.RECOMMENDATION.value:
@@ -47,27 +51,16 @@ def route_after_factory_data_rec(state: AgentState) -> str:
     return GENERATE_RESPONSE
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 def _tool_error(tool: str, exc: Exception) -> Dict[str, Any]:
     logger.error("Tool %s failed: %s", tool, exc)
     return {"tool": tool, "error": str(exc)}
 
 
-def _fmt(value: Any) -> str:
-    """Render a numeric value exactly as returned (no rounding), without trailing .0."""
-    if isinstance(value, float) and value.is_integer():
-        return str(int(value))
-    return str(value) if value is not None else "N/A"
-
-
 # ---------------------------------------------------------------------------
 # Node: fetch_hotspots
-# Loads the ranked hotspot list so we know which processes to target.
 # ---------------------------------------------------------------------------
 async def fetch_hotspots(state: AgentState) -> Dict[str, Any]:
-    """Retrieve the factory's deterministic hotspot ranking."""
+    """Retrieve the factory's deterministic hotspot ranking (the context for "fix first")."""
     tool = "get_hotspot_ranking"
     try:
         ranking = await get_hotspot_ranking(state["factory_id"])
@@ -77,126 +70,77 @@ async def fetch_hotspots(state: AgentState) -> Dict[str, Any]:
             "tools_used": [tool],
             "tool_errors": [_tool_error(tool, exc)],
         }
-
-    return {
-        "tool_results": {**state.get("tool_results", {}), "hotspot_ranking": ranking},
-        "tools_used": [tool],
-    }
+    return {"tool_results": {**state.get("tool_results", {}), "hotspot_ranking": ranking}, "tools_used": [tool]}
 
 
 # ---------------------------------------------------------------------------
 # Node: fetch_circular_alternatives
-# Retrieves alternatives from the structured PostgreSQL knowledge base.
-# No RAG — deterministic structured retrieval only.
 # ---------------------------------------------------------------------------
 async def fetch_circular_alternatives(state: AgentState) -> Dict[str, Any]:
-    """Retrieve circular alternatives from the Express knowledge base."""
-    tool = "find_circular_alternatives"
-    factory_id = state["factory_id"]
-
-    # Derive top-process context for better matching
-    ranking = (state.get("tool_results") or {}).get("hotspot_ranking") or {}
-    top_hotspots: List[Dict[str, Any]] = (ranking.get("hotspots") or [])[:3]
-
-    # Collect energy types from top hotspots to filter alternatives
-    energy_types = list({
-        h.get("energyType") or h.get("energy_type")
-        for h in top_hotspots
-        if h.get("energyType") or h.get("energy_type")
-    })
-    energy_param = energy_types[0] if energy_types else None
-
+    """Retrieve the circular alternatives the backend matched to this factory's emissions and scored."""
+    tool = "get_recommendations"
     try:
-        alternatives = await find_circular_alternatives(
-            factory_id=factory_id,
-            energy=energy_param,
-        )
+        payload = await get_recommendations(state["factory_id"])
     except Exception as exc:
         return {
-            "tool_results": {**state.get("tool_results", {}), "circular_alternatives": []},
+            "tool_results": {**state.get("tool_results", {}), "recommendations": None},
             "tools_used": [tool],
             "tool_errors": [_tool_error(tool, exc)],
         }
-
-    return {
-        "tool_results": {**state.get("tool_results", {}), "circular_alternatives": alternatives},
-        "tools_used": [tool],
-    }
+    return {"tool_results": {**state.get("tool_results", {}), "recommendations": payload}, "tools_used": [tool]}
 
 
 # ---------------------------------------------------------------------------
 # Node: calculate_impact
-# Maps alternatives onto the hotspot list — computes estimated reduction
-# quantities from the alternative's reduction_percent and hotspot emission.
-# This is deterministic arithmetic, not LLM-generated.
 # ---------------------------------------------------------------------------
-def calculate_impact(state: AgentState) -> Dict[str, Any]:
-    """Combine hotspot emissions with alternative reduction % to estimate impact."""
-    tool_results = state.get("tool_results") or {}
-    ranking = tool_results.get("hotspot_ranking") or {}
-    hotspots: List[Dict[str, Any]] = ranking.get("hotspots") or []
-    alternatives: List[Dict[str, Any]] = tool_results.get("circular_alternatives") or []
-    co2e_unit: str = ranking.get("co2eUnit") or "tCO2e"
-
-    # Total factory emission for impact context
-    total_emission: Optional[float] = ranking.get("totalEmission")
-
-    enriched: List[Dict[str, Any]] = []
-    for alt in alternatives:
-        reduction_pct: Optional[float] = alt.get("reduction_percent") or alt.get("reductionPercent")
-
-        # Estimated absolute reduction against the top hotspot (if data allows)
-        estimated_reduction_absolute: Optional[float] = None
-        target_process: Optional[str] = None
-        if hotspots and reduction_pct is not None:
-            top = hotspots[0]
-            top_emission: Optional[float] = top.get("emission") or top.get("total_emission")
-            if top_emission is not None:
-                estimated_reduction_absolute = round(top_emission * reduction_pct / 100, 4)
-                target_process = top.get("process") or top.get("processName")
-
-        enriched.append({
-            **alt,
-            # Keep deterministic backend fields, add derived estimates below
-            "estimated_reduction_absolute": estimated_reduction_absolute,
-            "estimated_reduction_unit": co2e_unit if estimated_reduction_absolute is not None else None,
-            "target_process": target_process,
-            # Normalised score for ranking — prefer circularity_score, fall back to reduction_percent
-            "score": alt.get("circularity_score") or alt.get("circularityScore") or reduction_pct or 0.0,
-        })
-
-    # Store the total factory emission and co2eUnit for the response node
-    impact_summary = {
-        "total_factory_emission": total_emission,
-        "co2e_unit": co2e_unit,
-        "alternative_count": len(enriched),
-    }
-
+def to_intervention(recommendation: Dict[str, Any]) -> Dict[str, Any]:
+    """Map one backend recommendation (API_CONTRACT §8) onto the evidence shape. Copies values only."""
     return {
-        "tool_results": {
-            **tool_results,
-            "enriched_alternatives": enriched,
-            "impact_summary": impact_summary,
-        },
-        "tools_used": ["calculate_impact"],
+        "rank": recommendation.get("rank"),
+        "name": recommendation.get("alternative"),
+        "current_option": recommendation.get("currentOption"),
+        "category": recommendation.get("category"),
+        "target": "Factory-wide" if recommendation.get("scope") == "FACTORY" else recommendation.get("process"),
+        # Weighted BR-06 score on a 0–100 scale
+        "score": recommendation.get("score"),
+        # Share of the factory's emissions the intervention is estimated to avoid (%)
+        "estimated_reduction_percent": recommendation.get("estimatedReduction"),
+        # Knowledge-base reduction of the emissions the intervention targets (%)
+        "targeted_reduction_percent": recommendation.get("reductionPercent"),
+        "estimated_savings": recommendation.get("estimatedSavings"),
+        "savings_unit": recommendation.get("savingsUnit"),
+        "cost_level": recommendation.get("estimatedCost"),
+        "implementation_difficulty": recommendation.get("implementationDifficulty"),
+        # None when the knowledge base has no cost estimate (BR-09 → "N/A")
+        "payback_years": recommendation.get("paybackPeriod"),
+        "status": recommendation.get("status"),
+        "reason": recommendation.get("reason"),
+        "assumptions": recommendation.get("assumptions") or [],
     }
+
+
+def calculate_impact(state: AgentState) -> Dict[str, Any]:
+    """Attach each open recommendation's backend-calculated impact. No arithmetic happens here."""
+    tool_results = state.get("tool_results") or {}
+    payload = tool_results.get("recommendations")
+    raw = (payload.get("recommendations") or []) if isinstance(payload, dict) else (payload or [])
+    impacts = [
+        to_intervention(item)
+        for item in raw
+        if item.get("alternative") and item.get("status") in _OPEN_STATUSES
+    ]
+    return {"tool_results": {**tool_results, "intervention_impacts": impacts}}
 
 
 # ---------------------------------------------------------------------------
 # Node: rank_interventions
-# Deterministic sort — no LLM involvement in ranking.
 # ---------------------------------------------------------------------------
 def rank_interventions_node(state: AgentState) -> Dict[str, Any]:
-    """Deterministically rank the enriched alternatives by score."""
+    """Order interventions by the backend's deterministic BR-06 rank (score, then CO2e saved, then name)."""
     tool_results = state.get("tool_results") or {}
-    enriched: List[Dict[str, Any]] = tool_results.get("enriched_alternatives") or []
-
-    ranked = rank_interventions(enriched) if enriched else []
-
-    return {
-        "tool_results": {**tool_results, "ranked_interventions": ranked},
-        "tools_used": ["rank_interventions"],
-    }
+    impacts: List[Dict[str, Any]] = tool_results.get("intervention_impacts") or []
+    ranked = sorted(impacts, key=lambda item: (item.get("rank") is None, item.get("rank") or 0))
+    return {"tool_results": {**tool_results, "ranked_interventions": ranked}}
 
 
 # ---------------------------------------------------------------------------
@@ -213,14 +157,19 @@ class RecommendationEvidence(BaseModel):
     co2e_unit: str = "tCO2e"
     total_factory_emission: Optional[float] = None
 
-    # Ranked interventions (top 5 only sent to the LLM)
+    # When the backend last scored the recommendations
+    generated_at: Optional[str] = None
+    # Ranked interventions (the top MAX_INTERVENTIONS are sent to the LLM)
     interventions: List[Dict[str, Any]] = Field(default_factory=list)
-
-    # Metadata / data quality
     alternative_count: int = 0
+
     missing_information: List[str] = Field(default_factory=list)
     assumptions: List[str] = Field(default_factory=list)
     confidence: ConfidenceLevel = ConfidenceLevel.UNAVAILABLE
+
+
+def _dedupe(items: List[Optional[str]]) -> List[str]:
+    return list(dict.fromkeys(item for item in items if item))
 
 
 def build_recommendation_evidence(
@@ -230,79 +179,56 @@ def build_recommendation_evidence(
     """Build grounded evidence from tool outputs. Pure and deterministic."""
     ranking = tool_results.get("hotspot_ranking") or {}
     hotspots = ranking.get("hotspots") or []
-    ranked = tool_results.get("ranked_interventions") or []
-    impact = tool_results.get("impact_summary") or {}
+    payload = tool_results.get("recommendations")
+    payload = payload if isinstance(payload, dict) else {}
+    ranked: List[Dict[str, Any]] = tool_results.get("ranked_interventions") or []
 
-    ev = RecommendationEvidence(
-        co2e_unit=impact.get("co2e_unit") or ranking.get("co2eUnit") or "tCO2e",
-        total_factory_emission=impact.get("total_factory_emission") or ranking.get("totalEmission"),
-        alternative_count=impact.get("alternative_count", len(ranked)),
+    evidence = RecommendationEvidence(
+        co2e_unit=ranking.get("co2eUnit") or "tCO2e",
+        total_factory_emission=ranking.get("totalEmission"),
+        generated_at=payload.get("generatedAt"),
+        alternative_count=len(ranked),
     )
 
-    # --- Top hotspot context -------------------------------------------------
     if hotspots:
         top = hotspots[0]
-        ev.top_hotspot_process = top.get("process") or top.get("processName")
-        ev.top_hotspot_emission = top.get("emission") or top.get("total_emission")
-        ev.top_hotspot_percent = top.get("percentage")
-        ev.top_hotspot_severity = top.get("severity")
+        evidence.top_hotspot_process = top.get("process")
+        evidence.top_hotspot_emission = top.get("emission")
+        evidence.top_hotspot_percent = top.get("percentage")
+        evidence.top_hotspot_severity = top.get("severity")
 
-    # --- Ranked interventions (top 5) ----------------------------------------
-    ev.interventions = [
-        {
-            "rank": item.get("rank"),
-            "name": item.get("alternative_option") or item.get("alternativeOption"),
-            "current_option": item.get("current_option") or item.get("currentOption"),
-            "category": item.get("category"),
-            "score": item.get("score") or item.get("circularity_score") or item.get("circularityScore"),
-            "reduction_percent": item.get("reduction_percent") or item.get("reductionPercent"),
-            "estimated_reduction_absolute": item.get("estimated_reduction_absolute"),
-            "cost_level": item.get("cost_level") or item.get("costLevel"),
-            "estimated_payback_years": item.get("estimated_payback_years") or item.get("estimatedPaybackYears"),
-            "target_process": item.get("target_process"),
-            "description": item.get("description"),
-        }
-        for item in ranked[:5]
+    evidence.interventions = [
+        {key: value for key, value in item.items() if key != "assumptions"} for item in ranked[:MAX_INTERVENTIONS]
     ]
 
     # --- Missing information --------------------------------------------------
-    if not hotspots:
-        ev.missing_information.append(
-            "No hotspot data is available — ensure emissions have been calculated for this factory."
+    failed = _dedupe([error.get("tool") for error in tool_errors])
+    missing = [f"The {tool} tool could not be reached, so its data is not included." for tool in failed]
+    if not hotspots and "get_hotspot_ranking" not in failed:
+        missing.append("No hotspot data is available — emissions may not have been calculated for this factory yet.")
+    if not ranked and "get_recommendations" not in failed:
+        missing.append(
+            "No open recommendations exist for this factory. Admins, factory operators and consultants "
+            "can generate them on the Recommendations page."
         )
-    if not ranked:
-        ev.missing_information.append(
-            "No circular alternatives are in the knowledge base for this factory's current options."
-        )
-    for err in tool_errors:
-        ev.missing_information.append(
-            f"The {err.get('tool')} tool could not be reached; its data is not included."
-        )
-    if ev.interventions and any(i.get("estimated_reduction_absolute") is None for i in ev.interventions):
-        ev.missing_information.append(
-            "Some reduction estimates are expressed as percentages only; "
-            "absolute tCO2e impact could not be calculated for all items."
-        )
+    unknown_payback = any(item.get("payback_years") is None for item in evidence.interventions)
+    if unknown_payback:
+        missing.append("Payback is not available for some interventions because the knowledge base has no cost estimate; it is shown as N/A.")
+    evidence.missing_information = missing
 
-    # --- Assumptions ----------------------------------------------------------
-    ev.assumptions.append(
-        "Reduction percentages are estimates from the circular alternatives knowledge base, "
-        "not guaranteed outcomes. Real savings depend on implementation details."
+    # --- Assumptions (as stated by the recommendation service) ----------------
+    evidence.assumptions = _dedupe(
+        list(payload.get("assumptions") or []) + [text for item in ranked for text in item.get("assumptions") or []]
     )
-    if ev.interventions:
-        ev.assumptions.append(
-            "Rankings are based on a composite circularity score; "
-            "financial and operational feasibility should be validated on site."
-        )
 
     # --- Confidence -----------------------------------------------------------
     if not ranked:
-        ev.confidence = ConfidenceLevel.UNAVAILABLE
-    elif tool_errors:
-        ev.confidence = ConfidenceLevel.LOW
-    elif any(i.get("estimated_reduction_absolute") is None for i in ev.interventions):
-        ev.confidence = ConfidenceLevel.MEDIUM
+        evidence.confidence = ConfidenceLevel.UNAVAILABLE
+    elif failed:
+        evidence.confidence = ConfidenceLevel.LOW
+    elif not hotspots or unknown_payback:
+        evidence.confidence = ConfidenceLevel.MEDIUM
     else:
-        ev.confidence = ConfidenceLevel.HIGH
+        evidence.confidence = ConfidenceLevel.HIGH
 
-    return ev
+    return evidence

@@ -96,12 +96,12 @@ async def load_factory_data(state: AgentState) -> Dict[str, Any]:
 RECOMMENDATION_RESPONSE_RULES = """
 
 Recommendation workflow rules:
-- The ranked interventions below are the ONLY source of scores, reduction percentages, costs and payback figures. Quote them exactly; do not add, round, convert or combine them.
-- Present each intervention with its rank, name, estimated reduction, cost level, payback and score.
-- Use the wording "estimated reduction" and "projected payback" — never guarantee outcomes.
-- If estimated_reduction_absolute is provided, quote it together with the unit.
-- If the list is empty, say no alternatives are available and suggest the user adds data.
-- Never invent interventions, numbers or alternatives not present in the list.
+- The interventions below were matched and scored by the deterministic recommendation service. They are the ONLY source of scores, reductions, savings, cost levels and payback figures. Quote them exactly; do not add, round, convert or combine them.
+- Explain the ranking in rank order: name, target, score (0–100, BR-06), estimated_reduction_percent (share of factory emissions), estimated_savings with savings_unit, cost_level and payback_years.
+- A payback_years of null means payback is not available — say "N/A".
+- Use the wording "estimated" and "projected" — never guarantee outcomes. Savings of different interventions can overlap, so never add them together.
+- If the list is empty, say no recommendations are available and explain what is missing.
+- Never invent interventions or numbers that are not in the list.
 - Mention all items in missing_information."""
 
 # Response rules injected when the scenario workflow has run.
