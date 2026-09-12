@@ -1,43 +1,37 @@
 import { apiClient, type ApiSuccess } from "@/services/apiClient"
-import type { CopilotRecommendation, CopilotScenario } from "./aiService"
+import type { EmissionSummary } from "@/services/emissionService"
+import type { Hotspot } from "@/services/hotspotService"
+import type { Recommendation } from "@/services/recommendationService"
+import type { SavedScenario } from "@/services/scenarioService"
 
 export type ReportFactory = {
   id: number
   name: string
-  location: string
-  industry: string
-  size: string
-  productionUnit: string
+  location: string | null
+  industry: string | null
+  productionCapacity?: number | null
+  productionUnit: string | null
 }
 
-export type ReportEmissionEntry = {
-  activityType?: string
-  process?: string
-  co2e: number
-  percentage: number
-}
-
+/** Calculated historical emissions. Every value is aggregated by the backend carbon engine. */
 export type ReportEmissions = {
   total: number
   unit: string
-  bySource: ReportEmissionEntry[]
-  byProcess: ReportEmissionEntry[]
-  intensity: { value: number | null; unit: string | null }
+  /** Part of `total` that comes from simulated readings (BR-12). */
+  simulatedCo2e?: number
+  bySource: EmissionSummary["bySource"]
+  byProcess: EmissionSummary["byProcess"]
+  intensity: EmissionSummary["intensity"]
 }
 
-export type ReportHotspot = {
-  rank: number
-  process: string
-  percentage: number
-  severity: string
-}
-
+/** Carbon assessment report: calculated history, estimated recommendations and projected scenarios. */
 export type FactoryReport = {
   factory: ReportFactory
+  generatedAt?: string
   emissions: ReportEmissions
-  hotspots: ReportHotspot[]
-  recommendations: CopilotRecommendation[]
-  scenarios: (CopilotScenario & { id: number; name: string })[]
+  hotspots: Hotspot[]
+  recommendations: Recommendation[]
+  scenarios: SavedScenario[]
   methodology: string[]
   assumptions: string[]
 }
