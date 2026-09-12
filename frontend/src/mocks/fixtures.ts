@@ -34,21 +34,21 @@ export const mockEmissionsBySource = [
 ]
 
 export const mockEmissionHistory = [
-  { label: "Apr", value: 98 },
-  { label: "May", value: 104 },
-  { label: "Jun", value: 101 },
-  { label: "Jul", value: 110 },
-  { label: "Aug", value: 106 },
-  { label: "Sep", value: 104 },
+  { period: "2026-04", co2e: 98 },
+  { period: "2026-05", co2e: 104 },
+  { period: "2026-06", co2e: 101 },
+  { period: "2026-07", co2e: 110 },
+  { period: "2026-08", co2e: 106 },
+  { period: "2026-09", co2e: 104 },
 ]
 
 export const mockElectricityHistory = [
-  { label: "Apr", value: 68000 },
-  { label: "May", value: 71000 },
-  { label: "Jun", value: 70500 },
-  { label: "Jul", value: 74200 },
-  { label: "Aug", value: 72100 },
-  { label: "Sep", value: 70900 },
+  { period: "2026-04", quantity: 68000 },
+  { period: "2026-05", quantity: 71000 },
+  { period: "2026-06", quantity: 70500 },
+  { period: "2026-07", quantity: 74200 },
+  { period: "2026-08", quantity: 72100 },
+  { period: "2026-09", quantity: 70900 },
 ]
 
 export const mockHotspots: {

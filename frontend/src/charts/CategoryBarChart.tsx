@@ -3,7 +3,8 @@ import ChartTooltip from "@/charts/ChartTooltip"
 import { formatNumber } from "@/utils/format"
 
 type CategoryBarChartProps = {
-  data: { label: string; value: number }[]
+  /** `share` (optional) is the API-calculated percentage of the total, shown in the tooltip. */
+  data: { label: string; value: number; share?: number }[]
   unit: string
   /** Single-series chart: one categorical slot; the card title names the series. */
   color?: string
