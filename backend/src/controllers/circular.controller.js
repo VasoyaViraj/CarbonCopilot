@@ -1,19 +1,9 @@
 import prisma from '../db/db.js';
+import { sendSuccess } from '../utils/response.js';
 
+// Errors reach the central error handler, which returns the standard error envelope.
 export const getAlternatives = async (req, res) => {
-  try {
-    const { category } = req.query;
-
-    const query = category ? { where: { category } } : {};
-    
-    const alternatives = await prisma.circularAlternative.findMany(query);
-    
-    res.json({
-      message: 'Circular alternatives retrieved successfully',
-      alternatives
-    });
-  } catch (error) {
-    console.error('Error retrieving circular alternatives:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  const { category } = req.query;
+  const alternatives = await prisma.circularAlternative.findMany(category ? { where: { category: String(category) } } : {});
+  sendSuccess(res, { alternatives });
 };
