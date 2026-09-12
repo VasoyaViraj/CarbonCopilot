@@ -301,7 +301,7 @@ class HotspotGraphTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(final["confidence"], "UNAVAILABLE")
 
     async def test_other_intents_skip_hotspot_workflow(self):
-        steps, final, _ = await self.run_graph("What should I fix first?")
+        steps, final, _ = await self.run_graph("What is my factory's profile?")
 
         self.assertEqual(steps, ["intent_router", "load_factory_data", "generate_response"])
         self.assertIsNone(final.get("root_cause"))
