@@ -30,10 +30,37 @@ Standard success/error shape:
   "success": false,
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "Invalid input"
+    "message": "Invalid input",
+    "details": [{ "field": "email", "message": "Invalid email" }]
   }
 }
 ```
+
+`details` is optional (field-level or row-level errors). Stack traces and internal errors are never returned to clients.
+
+### Error Codes
+
+| HTTP | Code | Meaning |
+|---:|---|---|
+| 400 | `VALIDATION_ERROR` | Request body/params/query failed validation |
+| 401 | `UNAUTHENTICATED` | Missing, invalid, or expired token |
+| 401 | `INVALID_CREDENTIALS` | Wrong email/password on login |
+| 403 | `FORBIDDEN` | Authenticated but role not permitted |
+| 404 | `NOT_FOUND` | Resource missing **or** outside the caller's organization (not disclosed) |
+| 409 | `CONFLICT` | Duplicate resource (e.g. email already registered) |
+| 413 | `PAYLOAD_TOO_LARGE` | Upload exceeds the configured limit |
+| 502 | `AI_SERVICE_ERROR` | AI service returned an error |
+| 504 | `AI_SERVICE_TIMEOUT` | AI service did not respond in time |
+| 500 | `INTERNAL_ERROR` | Unexpected server error |
+
+### Service Ports
+
+| Service | Default |
+|---|---|
+| Frontend (Vite) | `5173` |
+| Backend (Express) | `5000` — base URL `http://localhost:5000/api` |
+| AI service (FastAPI) | `8000` — internal only, called by Express |
+| PostgreSQL | `5432` |
 
 ## 2. Authentication
 
