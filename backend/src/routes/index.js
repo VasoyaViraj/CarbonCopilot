@@ -7,18 +7,20 @@ import emissionRoutes from './emission.routes.js';
 import anomalyRoutes from './anomaly.routes.js';
 import hotspotRoutes from './hotspot.routes.js';
 import recommendationRoutes from './recommendation.routes.js';
+import scenarioRoutes from './scenario.routes.js';
 
 const router = express.Router();
 
 router.use('/health', healthRoutes);
 router.use('/auth', authRoutes);
-// Mounted before /factories so /factories/:id/activities, /emissions and /hotspots are matched
+// Mounted before /factories so nested factory feature routes are matched
 // without re-running the factory router's auth.
 router.use(activityRoutes);
 router.use(emissionRoutes);
 router.use(anomalyRoutes);
 router.use(hotspotRoutes);
 router.use(recommendationRoutes);
+router.use(scenarioRoutes);
 router.use('/factories', factoryRoutes);
 
 export default router;
