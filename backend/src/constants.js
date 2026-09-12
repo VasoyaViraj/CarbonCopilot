@@ -1,0 +1,12 @@
+export const ROLES = Object.freeze({
+  ADMIN: 'ADMIN',
+  FACTORY_OPERATOR: 'FACTORY_OPERATOR',
+  CONSULTANT: 'CONSULTANT',
+  REGULATOR: 'REGULATOR',
+});
+
+export const ACTIVITY_SOURCES = Object.freeze({
+  MANUAL: 'MANUAL',
+  CSV: 'CSV',
+  SIMULATION: 'SIMULATION',
+});
