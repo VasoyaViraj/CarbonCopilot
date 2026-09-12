@@ -10,6 +10,7 @@ import recommendationRoutes from './recommendation.routes.js';
 import scenarioRoutes from './scenario.routes.js';
 import reportRoutes from './report.routes.js';
 import aiRoutes from './ai.routes.js';
+import circularRoutes from './circular.routes.js';
 
 const router = express.Router();
 
@@ -25,6 +26,7 @@ router.use(recommendationRoutes);
 router.use(scenarioRoutes);
 router.use(reportRoutes);
 router.use(aiRoutes);
+router.use(circularRoutes);
 router.use('/factories', factoryRoutes);
 
 export default router;

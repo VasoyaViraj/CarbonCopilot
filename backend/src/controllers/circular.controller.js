@@ -1,9 +1,6 @@
-import prisma from '../db/db.js';
+import { listAlternatives } from '../services/circular.service.js';
 import { sendSuccess } from '../utils/response.js';
 
-// Errors reach the central error handler, which returns the standard error envelope.
 export const getAlternatives = async (req, res) => {
-  const { category } = req.query;
-  const alternatives = await prisma.circularAlternative.findMany(category ? { where: { category: String(category) } } : {});
-  sendSuccess(res, { alternatives });
+  sendSuccess(res, { alternatives: await listAlternatives(req.validated.query) });
 };

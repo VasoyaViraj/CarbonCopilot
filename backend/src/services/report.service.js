@@ -1,53 +1,54 @@
-import prisma from '../db/db.js';
-import { loadFactoryActivities, summarizeEmissions } from './emissionAnalytics.service.js';
+import { getEmissionSummary } from './emissionAnalytics.service.js';
 import { getHotspots } from './hotspot.service.js';
-import { listRecommendations } from './recommendation.service.js';
-import { listScenarios } from './scenario.service.js';
+import { GENERAL_ASSUMPTIONS, listRecommendations } from './recommendation.service.js';
+import { SCENARIO_ASSUMPTIONS, listScenarios } from './scenario.service.js';
 
-export async function generateFactoryReport(factory) {
-  // 1. Fetch activities & summarize emissions
-  const { activities, processes } = await loadFactoryActivities(factory, {});
-  const emissionSummary = summarizeEmissions({ activities, processes });
-  
-  // 2. Hotspots
-  const hotspotsData = await getHotspots(factory, {});
+/** How every figure in the report is produced — kept in step with the services that produce them. */
+const METHODOLOGY = Object.freeze([
+  'Emissions are calculated deterministically as activity quantity × emission factor (BR-01); each stored emission keeps the factor it used (BR-02).',
+  "Hotspots rank processes by their share of the factory's calculated emissions, with severity from the configured thresholds (BR-03, BR-04).",
+  'Recommendations match circular alternatives to recorded emissions and are scored 0.40 × environmental impact + 0.25 × financial benefit + 0.20 × feasibility + 0.15 × circularity (BR-06).',
+  'Scenario projections come from the deterministic what-if engine and never modify baseline activities or emissions (BR-07).',
+  'Simulated readings are included in the totals and reported separately (BR-12).',
+]);
 
-  // 3. Recommendations
-  const recommendationsData = await listRecommendations(factory);
+/**
+ * Carbon assessment report of an authorized factory. Every number comes from the deterministic
+ * services; calculated history, estimated recommendations and projected scenarios stay separate.
+ */
+export async function generateFactoryReport(factory, now = new Date()) {
+  const [summary, hotspots, recommendations, scenarios] = await Promise.all([
+    getEmissionSummary(factory, {}),
+    getHotspots(factory, {}),
+    listRecommendations(factory),
+    listScenarios(factory),
+  ]);
 
-  // 4. Projected Reductions / Scenarios
-  // listScenarios scopes by factory.id; passing the id alone left the query unfiltered.
-  const scenariosData = await listScenarios(factory);
-
-  // 5. Build final report payload
   return {
     factory: {
       id: factory.id,
       name: factory.name,
-      location: factory.location || 'N/A',
-      industry: factory.industry || 'N/A',
-      size: factory.size || 'N/A',
-      productionUnit: factory.production_unit || 'N/A',
+      industry: factory.industry_type ?? null,
+      location: factory.location ?? null,
+      productionCapacity: factory.production_capacity ?? null,
+      productionUnit: factory.production_unit ?? null,
     },
+    generatedAt: now.toISOString(),
     emissions: {
-      total: emissionSummary.totals.co2e,
-      unit: emissionSummary.co2eUnit,
-      bySource: emissionSummary.bySource,
-      byProcess: emissionSummary.byProcess,
-      intensity: emissionSummary.intensity,
+      total: summary.totals.co2e,
+      unit: summary.co2eUnit,
+      simulatedCo2e: summary.totals.simulatedCo2e,
+      activityCount: summary.totals.activityCount,
+      bySource: summary.bySource,
+      byProcess: summary.byProcess,
+      byDataSource: summary.byDataSource,
+      intensity: summary.intensity,
+      warnings: summary.warnings,
     },
-    hotspots: hotspotsData.hotspots,
-    recommendations: recommendationsData.recommendations,
-    scenarios: scenariosData,
-    methodology: [
-      "Emissions are calculated using standard emission factors deterministically.",
-      "Hotspots are ranked by their percentage contribution to the total calculated factory emissions.",
-      "Recommendations are algorithmically suggested interventions based on top hotspots and generic industry circular alternatives.",
-      "Scenario projections are strictly mathematical differences applied against the historical baseline."
-    ],
-    assumptions: [
-      "Future production levels are assumed to remain constant when projecting scenario impacts.",
-      "Costs and savings for recommendations are median estimates based on the industry baseline."
-    ]
+    hotspots: hotspots.hotspots,
+    recommendations: recommendations.recommendations,
+    scenarios,
+    methodology: METHODOLOGY,
+    assumptions: [...new Set([...GENERAL_ASSUMPTIONS, ...SCENARIO_ASSUMPTIONS])],
   };
 }

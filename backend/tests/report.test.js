@@ -57,3 +57,57 @@ describe('GET /api/factories/:factoryId/report', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('report content', () => {
+  const simulatedReading = {
+    id: 1,
+    process_id: 1,
+    activity_date: new Date('2026-09-01T00:00:00Z'),
+    energy_type: 'ELECTRICITY',
+    quantity: 1,
+    unit: 'kWh',
+    production_quantity: null,
+    production_unit: null,
+    source: 'SIMULATION',
+    process: { name: 'Furnace' },
+    emissions: [{ co2e_value: 2000, co2e_unit: 'kgCO2e' }],
+  };
+
+  it('reports the factory profile as stored', async () => {
+    prisma.factory.findFirst.mockResolvedValue({ ...factory, industry_type: 'Metal Components', production_capacity: 10000 });
+
+    const res = await request(app).get('/api/factories/1/report').set('Authorization', bearer);
+
+    expect(res.body.data.factory).toEqual({
+      id: 1,
+      name: 'Test Factory',
+      industry: 'Metal Components',
+      location: null,
+      productionCapacity: 10000,
+      productionUnit: 'tonnes',
+    });
+    expect(Date.parse(res.body.data.generatedAt)).not.toBeNaN();
+  });
+
+  it('labels emissions from simulated readings separately', async () => {
+    prisma.process.findMany.mockResolvedValue([{ id: 1, name: 'Furnace', process_type: null, description: null }]);
+    prisma.activity.findMany.mockResolvedValue([simulatedReading]);
+
+    const { body } = await request(app).get('/api/factories/1/report').set('Authorization', bearer);
+
+    expect(body.data.emissions.total).toBe(2);
+    expect(body.data.emissions.simulatedCo2e).toBe(2);
+    expect(body.data.emissions.byDataSource).toEqual([expect.objectContaining({ source: 'SIMULATION', isSimulated: true })]);
+    expect(body.data.hotspots[0]).toMatchObject({ process: 'Furnace', emission: 2 });
+  });
+
+  it('describes only the methodology the services implement', async () => {
+    const { body } = await request(app).get('/api/factories/1/report').set('Authorization', bearer);
+
+    expect(body.data.methodology.join(' ')).toContain('BR-06');
+    expect(body.data.assumptions).toEqual(
+      expect.arrayContaining([expect.stringContaining('not guaranteed savings'), expect.stringContaining('never modified')])
+    );
+    expect(JSON.stringify(body.data)).not.toMatch(/median estimates|production levels are assumed/i);
+  });
+});
