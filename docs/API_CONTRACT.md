@@ -415,6 +415,7 @@ Expected response:
 ## 11. Authorization Rules
 
 - Users may access only factories within their organization/scope.
+- Creating, updating and deleting factories and processes requires `ADMIN` or `FACTORY_OPERATOR`. Other roles get `403 FORBIDDEN`. A process can only be changed through the factory it belongs to.
 - Admin can manage configuration.
 - Operator can enter operational data.
 - Consultant can analyze and generate recommendations/reports.

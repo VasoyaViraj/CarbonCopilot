@@ -5,8 +5,8 @@ export function createPrismaMock() {
   const mock = {
     user: { findUnique: vi.fn(), create: vi.fn() },
     organization: { create: vi.fn() },
-    factory: { findFirst: vi.fn() },
-    process: { findFirst: vi.fn(), findMany: vi.fn() },
+    factory: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    process: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     activity: { create: vi.fn(), createMany: vi.fn(), findMany: vi.fn(), count: vi.fn() },
     $transaction: vi.fn(),
     $queryRaw: vi.fn(),
