@@ -6,21 +6,7 @@
  * Replace each import with API-backed data during frontend integration; never
  * import this module from services, hooks, or shared components.
  */
-import type { CostLevel, Severity } from "@/types/domain"
-
-export const mockHotspots: {
-  processId: number
-  process: string
-  emission: number
-  percentage: number
-  severity: Severity
-}[] = [
-  { processId: 1, process: "Furnace", emission: 520, percentage: 47, severity: "CRITICAL" },
-  { processId: 2, process: "Electricity", emission: 250, percentage: 22, severity: "MEDIUM" },
-  { processId: 3, process: "Boiler", emission: 180, percentage: 16, severity: "MEDIUM" },
-  { processId: 4, process: "Transport", emission: 80, percentage: 7, severity: "LOW" },
-  { processId: 5, process: "Waste", emission: 70, percentage: 6, severity: "LOW" },
-]
+import type { CostLevel } from "@/types/domain"
 
 export const mockRecommendations: {
   id: number

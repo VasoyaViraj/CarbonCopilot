@@ -13,8 +13,8 @@ import ChartContainer from "@/charts/ChartContainer"
 import CategoryBarChart from "@/charts/CategoryBarChart"
 import TrendLineChart from "@/charts/TrendLineChart"
 import { Button, buttonVariants } from "@/components/ui/button"
+import FactorySelect from "@/components/FactorySelect"
 import { Card } from "@/components/ui/card"
-import { Select } from "@/components/ui/input"
 import { useEmissionSummary } from "@/hooks/useEmissionSummary"
 import { useFactorySelection } from "@/hooks/useFactorySelection"
 import type { EmissionSummary } from "@/services/emissionService"
@@ -172,15 +172,7 @@ export default function DashboardPage() {
         actions={
           factory && (
             <>
-              {factories.length > 1 && (
-                <Select aria-label="Factory" className="w-56" value={factory.id} onChange={(event) => selectFactory(Number(event.target.value))}>
-                  {factories.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.name}
-                    </option>
-                  ))}
-                </Select>
-              )}
+              <FactorySelect factories={factories} value={factory.id} onChange={selectFactory} />
               <DashboardFilters value={filters} onChange={setFilters} />
             </>
           )
