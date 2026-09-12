@@ -50,3 +50,54 @@ export function calculateEmissionValue(quantity, factorValue, inputUnit, factorU
   // Deterministic math
   return quantity * factorValue;
 }
+
+/**
+ * 3. Process activity and store emission result.
+ * @param {number} activityId 
+ * @returns {Promise<object>} The created Emission record
+ */
+export async function processActivityEmission(activityId) {
+  const activity = await prisma.activity.findUnique({
+    where: { id: activityId },
+    include: {
+      process: true
+    }
+  });
+
+  if (!activity) {
+    throw new Error(`Activity with id ${activityId} not found.`);
+  }
+
+  let factor;
+  try {
+    factor = await findEmissionFactor('Energy', activity.energy_type, activity.unit);
+  } catch (err) {
+    // Try finding where category is the energy_type directly
+    try {
+      factor = await findEmissionFactor(activity.energy_type, null, activity.unit);
+    } catch (innerErr) {
+      throw new Error(`Could not find emission factor for activity ${activityId}: ${err.message}`);
+    }
+  }
+
+  const co2eValue = calculateEmissionValue(
+    activity.quantity,
+    factor.factor,
+    activity.unit,
+    factor.unit
+  );
+
+  const calculationMethod = 'Deterministic: Quantity * Factor';
+
+  const emission = await prisma.emission.create({
+    data: {
+      activity_id: activity.id,
+      emission_factor_id: factor.id,
+      co2e_value: co2eValue,
+      co2e_unit: factor.co2e_unit || 'kgCO2e',
+      calculation_method: calculationMethod
+    }
+  });
+
+  return emission;
+}
