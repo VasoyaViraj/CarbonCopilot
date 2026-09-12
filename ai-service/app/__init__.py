@@ -1,1 +1,1 @@
-"""EcoTrace AI service (FastAPI app is added in Phase 13)."""
+"""EcoTrace AI service — Phase 13: FastAPI application foundation."""
