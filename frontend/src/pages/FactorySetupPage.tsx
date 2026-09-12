@@ -6,7 +6,7 @@ import EmptyState from "@/components/feedback/EmptyState"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { factoryService, Factory, Process } from "@/services/factoryService"
+import { factoryService, type Factory, type Process } from "@/services/factoryService"
 
 export default function FactorySetupPage() {
   const [factory, setFactory] = useState<Factory | null>(null)
