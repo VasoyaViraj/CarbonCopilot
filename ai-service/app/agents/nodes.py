@@ -16,7 +16,8 @@ from typing import Any, Dict
 from langchain_core.messages import AIMessage, SystemMessage
 
 from app.agents.hotspot_workflow import HOTSPOT_RESPONSE_RULES
-from app.agents.intent_router import classify_message, last_user_message
+from app.agents.intent_router import Intent, classify_message, last_user_message
+from app.agents.recommendation_workflow import build_recommendation_evidence
 from app.agents.state import AgentState
 from app.services.llm import get_llm
 
@@ -89,24 +90,57 @@ async def load_factory_data(state: AgentState) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Node: generate_response
 # ---------------------------------------------------------------------------
+# Response rules injected when the recommendation workflow has run.
+RECOMMENDATION_RESPONSE_RULES = """
+
+Recommendation workflow rules:
+- The ranked interventions below are the ONLY source of scores, reduction percentages, costs and payback figures. Quote them exactly; do not add, round, convert or combine them.
+- Present each intervention with its rank, name, estimated reduction, cost level, payback and score.
+- Use the wording "estimated reduction" and "projected payback" — never guarantee outcomes.
+- If estimated_reduction_absolute is provided, quote it together with the unit.
+- If the list is empty, say no alternatives are available and suggest the user adds data.
+- Never invent interventions, numbers or alternatives not present in the list.
+- Mention all items in missing_information."""
+
+
 def generate_response(state: AgentState) -> Dict[str, Any]:
     """Generate the final natural-language answer.
 
-    The LLM receives the tool results as context and produces an explanation.
+    The LLM receives grounded tool results as context and produces an explanation.
     It must NEVER invent numeric values — it only explains what the tools returned.
+
+    Workflows supported:
+    - Hotspot analysis: uses root_cause evidence block.
+    - Recommendation: uses RecommendationEvidence block.
+    - All others: dumps raw tool_results.
     """
     intent = state.get("intent", "GENERAL_CARBON_QUESTION")
     tool_results = state.get("tool_results", {})
+    tool_errors = state.get("tool_errors") or []
     messages = state["messages"]
 
     root_cause = state.get("root_cause")
+
     if root_cause:
-        # Hotspot workflow: the grounded evidence replaces the raw tool dump.
+        # Hotspot workflow: use the grounded evidence block.
         tool_context = json.dumps(root_cause, indent=2, default=str)
         workflow_rules = HOTSPOT_RESPONSE_RULES
+        evidence_assumptions = [item["statement"] for item in root_cause.get("missing_information", [])]
+        evidence_confidence = root_cause.get("confidence", "MEDIUM")
+
+    elif intent == Intent.RECOMMENDATION.value and tool_results.get("ranked_interventions") is not None:
+        # Recommendation workflow: build grounded evidence, give LLM a clean structure.
+        rec_evidence = build_recommendation_evidence(tool_results, tool_errors)
+        tool_context = json.dumps(rec_evidence.model_dump(mode="json"), indent=2, default=str)
+        workflow_rules = RECOMMENDATION_RESPONSE_RULES
+        evidence_assumptions = rec_evidence.assumptions + rec_evidence.missing_information
+        evidence_confidence = rec_evidence.confidence.value
+
     else:
         tool_context = json.dumps(tool_results, indent=2, default=str) if tool_results else "No tool data available."
         workflow_rules = ""
+        evidence_assumptions = None
+        evidence_confidence = None
 
     classification = state.get("intent_classification") or {}
     clarification_rule = (
@@ -141,12 +175,10 @@ Answer the user's question based on this data."""
 
     answer = response.content
 
-    if root_cause:
-        # Deterministic limitations from the root-cause step, not parsed from LLM text.
-        assumptions = [item["statement"] for item in root_cause["missing_information"]]
-        confidence = root_cause["confidence"]
+    if evidence_assumptions is not None:
+        assumptions = evidence_assumptions
+        confidence = evidence_confidence
     else:
-        # Extract assumptions heuristically — sentences containing certain keywords
         assumption_keywords = ["estimated", "projected", "assumes", "based on available", "simulated"]
         assumptions = [
             sentence.strip()
