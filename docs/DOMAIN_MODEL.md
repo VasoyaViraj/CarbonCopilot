@@ -62,6 +62,29 @@ Organization
 User ─── AI Conversations ─── AI Messages
 ```
 
+### Initial ER Diagram
+
+```mermaid
+erDiagram
+    organizations ||--o{ users : has
+    organizations ||--o{ factories : owns
+    factories ||--o{ processes : contains
+    factories ||--o{ materials : uses
+    factories ||--o{ waste : generates
+    factories ||--o{ recommendations : receives
+    factories ||--o{ scenarios : models
+    factories ||--o{ ai_conversations : context
+    processes ||--o{ activities : records
+    processes ||--o{ waste : produces
+    processes ||--o{ recommendations : targets
+    processes ||--o{ simulation_readings : streams
+    activities ||--o{ emissions : produces
+    emission_factors ||--o{ emissions : "applied in"
+    circular_alternatives ||--o{ recommendations : "basis of"
+    users ||--o{ ai_conversations : starts
+    ai_conversations ||--o{ ai_messages : contains
+```
+
 ## 3. Relational Model
 
 ### organizations
