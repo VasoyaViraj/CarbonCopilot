@@ -62,6 +62,29 @@ Organization
 User ─── AI Conversations ─── AI Messages
 ```
 
+### Initial ER Diagram
+
+```mermaid
+erDiagram
+    organizations ||--o{ users : has
+    organizations ||--o{ factories : owns
+    factories ||--o{ processes : contains
+    factories ||--o{ materials : uses
+    factories ||--o{ waste : generates
+    factories ||--o{ recommendations : receives
+    factories ||--o{ scenarios : models
+    factories ||--o{ ai_conversations : context
+    processes ||--o{ activities : records
+    processes ||--o{ waste : produces
+    processes ||--o{ recommendations : targets
+    processes ||--o{ simulation_readings : streams
+    activities ||--o{ emissions : produces
+    emission_factors ||--o{ emissions : "applied in"
+    circular_alternatives ||--o{ recommendations : "basis of"
+    users ||--o{ ai_conversations : starts
+    ai_conversations ||--o{ ai_messages : contains
+```
+
 ## 3. Relational Model
 
 ### organizations
@@ -90,6 +113,7 @@ updated_at
 id
 organization_id FK
 name
+industry_type
 location
 production_capacity
 production_unit
@@ -127,8 +151,9 @@ id
 category
 source
 fuel_type
-unit
-factor
+unit            (activity unit, e.g. kWh)
+factor          (co2e_unit per activity unit)
+co2e_unit       (default kgCO2e)
 region
 year
 reference
@@ -244,7 +269,25 @@ temperature
 energy_consumption
 fuel_consumption
 estimated_emission
-status
+status          (NORMAL | ALERT)
+is_simulated    (always true for hackathon readings)
+```
+
+### Enumerations & constraints
+
+```text
+Role                  ADMIN | FACTORY_OPERATOR | CONSULTANT | REGULATOR
+ActivitySource        MANUAL | CSV | SIMULATION
+RecommendationStatus  PENDING | ACCEPTED | REJECTED | IMPLEMENTED
+AiMessageRole         USER | ASSISTANT | SYSTEM
+SimulationStatus      NORMAL | ALERT
+
+users.email                                   unique
+users.organization_id                         required (every user belongs to an organization)
+processes (factory_id, name)                  unique — CSV rows resolve processes by name
+circular_alternatives (current, alternative)  unique
+emissions.emission_factor_id                  ON DELETE RESTRICT (factors explain history)
+factory children                              ON DELETE CASCADE
 ```
 
 ## 4. Domain Invariants

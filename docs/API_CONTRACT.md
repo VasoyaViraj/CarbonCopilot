@@ -30,10 +30,38 @@ Standard success/error shape:
   "success": false,
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "Invalid input"
+    "message": "Invalid input",
+    "details": [{ "field": "email", "message": "Invalid email" }]
   }
 }
 ```
+
+`details` is optional (field-level or row-level errors). Stack traces and internal errors are never returned to clients.
+
+### Error Codes
+
+| HTTP | Code | Meaning |
+|---:|---|---|
+| 400 | `VALIDATION_ERROR` | Request body/params/query failed validation |
+| 401 | `UNAUTHENTICATED` | Missing, invalid, or expired token |
+| 401 | `INVALID_CREDENTIALS` | Wrong email/password on login |
+| 403 | `FORBIDDEN` | Authenticated but role not permitted |
+| 404 | `NOT_FOUND` | Resource missing **or** outside the caller's organization (not disclosed) |
+| 409 | `CONFLICT` | Duplicate resource (e.g. email already registered) |
+| 413 | `PAYLOAD_TOO_LARGE` | Upload exceeds the configured limit |
+| 502 | `AI_SERVICE_ERROR` | AI service returned an error |
+| 503 | `SERVICE_UNAVAILABLE` | A dependency (e.g. the database) is unavailable |
+| 504 | `AI_SERVICE_TIMEOUT` | AI service did not respond in time |
+| 500 | `INTERNAL_ERROR` | Unexpected server error |
+
+### Service Ports
+
+| Service | Default |
+|---|---|
+| Frontend (Vite) | `5173` |
+| Backend (Express) | `5000` — base URL `http://localhost:5000/api` |
+| AI service (FastAPI) | `8000` — internal only, called by Express |
+| PostgreSQL | `5432` |
 
 ## 2. Authentication
 
@@ -48,9 +76,15 @@ Request:
   "name": "Operator",
   "email": "operator@example.com",
   "password": "********",
-  "role": "FACTORY_OPERATOR"
+  "role": "FACTORY_OPERATOR",
+  "organizationName": "ABC Metal Manufacturing"
 }
 ```
+
+- `role`: `FACTORY_OPERATOR` (default), `CONSULTANT`, or `REGULATOR`. `ADMIN` cannot be self-assigned.
+- Registration always creates a **new organization** for the user; clients cannot supply an organization ID.
+- Password: 8–72 characters. Unknown fields are rejected.
+- `201` with the same body as login; `409 CONFLICT` if the email exists.
 
 ### Login
 ```http
@@ -60,18 +94,35 @@ POST /api/auth/login
 Response:
 ```json
 {
-  "accessToken": "...",
-  "user": {
-    "id": 1,
-    "role": "FACTORY_OPERATOR"
+  "success": true,
+  "data": {
+    "accessToken": "...",
+    "user": {
+      "id": 1,
+      "name": "Operator",
+      "email": "operator@example.com",
+      "role": "FACTORY_OPERATOR",
+      "organizationId": 1
+    }
   }
 }
 ```
+
+Wrong email or password both return `401 INVALID_CREDENTIALS`. The token is also set as an `httpOnly` cookie; clients should send it as `Authorization: Bearer <token>`.
 
 ### Current User
 ```http
 GET /api/auth/me
 ```
+
+Returns `{ "success": true, "data": { "user": { ... } } }`. The user is re-loaded from the database on every request, so role changes and deletions apply immediately; missing, tampered, or expired tokens return `401 UNAUTHENTICATED`.
+
+### Logout
+```http
+POST /api/auth/logout
+```
+
+Clears the auth cookie. Clients also discard their stored token.
 
 ## 3. Factories
 

@@ -1,0 +1,20 @@
+# Optional local PostgreSQL for development.
+# Matching DATABASE_URL: postgresql://ecotrace:ecotrace@localhost:5432/ecotrace?schema=public
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ecotrace
+      POSTGRES_PASSWORD: ecotrace
+      POSTGRES_DB: ecotrace
+    ports:
+      - "5432:5432"
+    volumes:
+      - ecotrace-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecotrace"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  ecotrace-pgdata:

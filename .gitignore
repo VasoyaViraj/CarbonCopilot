@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Environment files (templates are committed as *.example)
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+coverage/
+.pytest_cache/
+
+# Generated Prisma client
+backend/src/generated/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.log
