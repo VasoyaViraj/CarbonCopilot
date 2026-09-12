@@ -87,7 +87,7 @@ export default function HotspotsPage() {
     signal,
     isLoading: signalLoading,
     error: signalError,
-  } = useAnomalySignal(factoryId)
+  } = useAnomalySignal(factoryId ?? undefined)
 
   /*
    * Detailed information for the selected process.

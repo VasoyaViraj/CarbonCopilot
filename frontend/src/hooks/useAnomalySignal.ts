@@ -6,22 +6,25 @@ export function useAnomalySignal(factoryId: number | undefined, query?: AnomalyQ
   const [signal, setSignal] = useState<AnomalySignal | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const threshold = query?.threshold
+  const baselineDays = query?.baselineDays
 
   const fetchSignal = useCallback(async () => {
     if (!factoryId) return
     setIsLoading(true)
     setError(null)
     try {
-      const data = await anomalyService.getAnomalySignal(factoryId, query)
+      const data = await anomalyService.getAnomalySignal(factoryId, { threshold, baselineDays })
       setSignal(data)
     } catch (err) {
       setError(getApiErrorMessage(err))
     } finally {
       setIsLoading(false)
     }
-  }, [factoryId, query?.threshold, query?.baselineDays])
+  }, [factoryId, threshold, baselineDays])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch when the factory or query changes
     fetchSignal()
   }, [fetchSignal])
 
