@@ -10,9 +10,8 @@ export const askCopilot = async (req, res) => {
   sendSuccess(res, answer);
 };
 
+// req.factory is loaded (and organization-scoped) by requireFactoryAccess.
 export const getConversationHistory = async (req, res) => {
-  const factoryId = parseInt(req.params.factoryId, 10);
-  const factory = await getAuthorizedFactory(req.user, factoryId);
-  const history = await aiService.getConversationHistory({ user: req.user, factory });
+  const history = await aiService.getConversationHistory({ user: req.user, factory: req.factory });
   sendSuccess(res, history);
 };

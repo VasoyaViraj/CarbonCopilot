@@ -16,7 +16,8 @@ export async function generateFactoryReport(factory) {
   const recommendationsData = await listRecommendations(factory);
 
   // 4. Projected Reductions / Scenarios
-  const scenariosData = await listScenarios(factory.id);
+  // listScenarios scopes by factory.id; passing the id alone left the query unfiltered.
+  const scenariosData = await listScenarios(factory);
 
   // 5. Build final report payload
   return {
