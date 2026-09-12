@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
+import prisma from '../db/db.js';
 
 const toCamel = (key) => key.replace(/_([a-z0-9])/g, (_, char) => char.toUpperCase());
 
@@ -26,6 +27,7 @@ function toCopilotResponse(body) {
     confidence: data.confidence ?? 'UNAVAILABLE',
     intent: data.intent ?? null,
     actionPlan: data.actionPlan ?? null,
+    conversationId: data.conversationId ?? null,
   };
 }
 
@@ -68,7 +70,52 @@ export async function askCopilot({ user, factory, message, conversationId }) {
       }
       throw aiError();
     }
-    return toCopilotResponse(await response.json());
+
+    const aiResponse = toCopilotResponse(await response.json());
+    
+    // Maintain conversation persistence
+    let activeConversationId = conversationId;
+    if (!activeConversationId) {
+      const conv = await prisma.aiConversation.create({
+        data: {
+          user_id: user.id,
+          factory_id: factory.id,
+        },
+      });
+      activeConversationId = conv.id;
+    }
+
+    const toolMetadata = {
+      toolsUsed: aiResponse.toolsUsed,
+      recommendations: aiResponse.recommendations,
+      scenario: aiResponse.scenario,
+      assumptions: aiResponse.assumptions,
+      actionPlan: aiResponse.actionPlan,
+      intent: aiResponse.intent,
+      confidence: aiResponse.confidence,
+    };
+
+    // Save both messages in a transaction
+    await prisma.$transaction([
+      prisma.aiMessage.create({
+        data: {
+          conversation_id: activeConversationId,
+          role: 'USER',
+          content: message,
+        }
+      }),
+      prisma.aiMessage.create({
+        data: {
+          conversation_id: activeConversationId,
+          role: 'ASSISTANT',
+          content: aiResponse.answer,
+          tool_used: toolMetadata,
+        }
+      })
+    ]);
+
+    aiResponse.conversationId = activeConversationId;
+    return aiResponse;
   } catch (err) {
     if (err instanceof ApiError) throw err;
     if (controller.signal.aborted || err?.name === 'AbortError') throw timeoutError();
@@ -76,4 +123,57 @@ export async function askCopilot({ user, factory, message, conversationId }) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Fetches the most recent conversation and its messages for the given user and factory.
+ * Restores the stable API structure for each assistant message.
+ */
+export async function getConversationHistory({ user, factory }) {
+  const conversation = await prisma.aiConversation.findFirst({
+    where: { user_id: user.id, factory_id: factory.id },
+    orderBy: { created_at: 'desc' },
+    include: {
+      messages: {
+        orderBy: { created_at: 'asc' },
+      },
+    },
+  });
+
+  if (!conversation) {
+    return { conversationId: null, messages: [] };
+  }
+
+  const mappedMessages = conversation.messages.map((msg) => {
+    if (msg.role === 'USER') {
+      return {
+        id: msg.id.toString(),
+        role: 'user',
+        content: msg.content,
+      };
+    } else {
+      // For ASSISTANT and SYSTEM roles, restore metadata if available
+      const meta = msg.tool_used || {};
+      return {
+        id: msg.id.toString(),
+        role: 'assistant',
+        content: msg.content,
+        response: {
+          answer: msg.content,
+          toolsUsed: list(meta.toolsUsed),
+          recommendations: list(meta.recommendations),
+          scenario: meta.scenario ?? null,
+          assumptions: list(meta.assumptions),
+          actionPlan: meta.actionPlan ?? null,
+          intent: meta.intent ?? null,
+          confidence: meta.confidence ?? 'UNAVAILABLE',
+        },
+      };
+    }
+  });
+
+  return {
+    conversationId: conversation.id,
+    messages: mappedMessages,
+  };
 }

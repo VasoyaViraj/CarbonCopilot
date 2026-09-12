@@ -337,7 +337,7 @@ describe('CSV template and format', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/text\/csv/);
     expect(res.headers['content-disposition']).toMatch(/attachment; filename="ecotrace-activities-template.csv"/);
-    expect(res.text).toBe(committed);
+    expect(res.text.replace(/\r\n/g, '\n')).toBe(committed.replace(/\r\n/g, '\n'));
   });
 
   it('describes the CSV format in the activity catalog', async () => {

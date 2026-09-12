@@ -9,3 +9,10 @@ export const askCopilot = async (req, res) => {
   const answer = await aiService.askCopilot({ user: req.user, factory, message, conversationId });
   sendSuccess(res, answer);
 };
+
+export const getConversationHistory = async (req, res) => {
+  const factoryId = parseInt(req.params.factoryId, 10);
+  const factory = await getAuthorizedFactory(req.user, factoryId);
+  const history = await aiService.getConversationHistory({ user: req.user, factory });
+  sendSuccess(res, history);
+};

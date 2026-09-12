@@ -40,6 +40,9 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   prisma.user.findUnique.mockResolvedValue(user);
   prisma.factory.findFirst.mockResolvedValue(factory);
+  prisma.aiConversation.create.mockResolvedValue({ id: 99 });
+  prisma.aiConversation.findFirst.mockResolvedValue(null);
+  prisma.$transaction.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -75,6 +78,7 @@ describe('POST /api/ai/copilot', () => {
       confidence: 'HIGH',
       intent: 'ACTION_PLAN',
       actionPlan: { immediateInvestigation: [{ title: 'Investigate Furnace', detail: 'Check data.', relatedTo: 'Furnace' }] },
+      conversationId: 99,
     });
     expect(JSON.stringify(res.body)).not.toContain(SERVICE_TOKEN);
   });

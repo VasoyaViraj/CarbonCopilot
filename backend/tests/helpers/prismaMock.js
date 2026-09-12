@@ -18,6 +18,8 @@ export function createPrismaMock() {
       update: vi.fn(),
       delete: vi.fn(),
     },
+    aiConversation: { findFirst: vi.fn(), create: vi.fn() },
+    aiMessage: { create: vi.fn() },
     emissionFactor: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
     emission: { create: vi.fn(), createMany: vi.fn(), deleteMany: vi.fn(), findMany: vi.fn(), count: vi.fn() },
     circularAlternative: { findMany: vi.fn(), findUnique: vi.fn() },
