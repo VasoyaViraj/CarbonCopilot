@@ -181,6 +181,7 @@ export async function getConversationHistory({ user, factory }) {
           actionPlan: meta.actionPlan ?? null,
           intent: meta.intent ?? null,
           confidence: meta.confidence ?? 'UNAVAILABLE',
+          conversationId: conversation.id,
         },
       };
     }

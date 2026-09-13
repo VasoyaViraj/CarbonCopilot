@@ -135,6 +135,33 @@ describe('POST /api/ai/copilot', () => {
   });
 });
 
+describe('GET /api/factories/:id/ai/history', () => {
+  it('restores assistant answers in the same contract as a live copilot response', async () => {
+    const toolUsed = {
+      toolsUsed: aiBody.toolsUsed,
+      recommendations: [],
+      scenario: null,
+      assumptions: aiBody.assumptions,
+      actionPlan: null,
+      intent: 'ACTION_PLAN',
+      confidence: 'HIGH',
+    };
+    prisma.aiConversation.findFirst.mockResolvedValue({
+      id: 12,
+      messages: [
+        { id: 1, role: 'USER', content: 'Generate an action plan.', tool_used: null },
+        { id: 2, role: 'ASSISTANT', content: '## Plan', tool_used: toolUsed },
+      ],
+    });
+
+    const res = await request(app).get('/api/factories/3/ai/history').set('Authorization', bearer);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.conversationId).toBe(12);
+    expect(res.body.data.messages[1].response).toEqual({ answer: '## Plan', ...toolUsed, conversationId: 12 });
+  });
+});
+
 describe('AI service access to the API', () => {
   it('reads data as the acting user, scoped to their organization', async () => {
     prisma.scenario.findMany.mockResolvedValue([]);
