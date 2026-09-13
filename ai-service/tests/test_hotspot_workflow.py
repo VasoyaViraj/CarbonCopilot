@@ -13,7 +13,14 @@ from app.agents.hotspot_workflow import NO_EQUIPMENT_DATA, build_root_cause, sel
 from app.schemas.ai_response import ConfidenceLevel
 
 # Shapes from docs/API_CONTRACT.md §3, §6 and §7.
-PROFILE = {"id": 1, "name": "ABC Metal Manufacturing", "industryType": "Metal Components", "processes": []}
+# get_factory_profile output: the stored factory record plus its processes.
+PROFILE = {
+    "id": 1,
+    "name": "ABC Metal Manufacturing",
+    "industry_type": "Metal Components",
+    "processes": [{"id": 7, "name": "Furnace", "process_type": "THERMAL"}],
+    "process_count": 1,
+}
 
 SUMMARY = {
     "factory": {"id": 1, "name": "ABC Metal Manufacturing"},

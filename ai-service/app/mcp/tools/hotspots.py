@@ -23,12 +23,14 @@ class IdentifyHotspotsInput(BaseModel):
 
 
 class HotspotItem(BaseModel):
-    """A single process-level hotspot entry."""
-    process_id: int | None = None
-    process_name: str
-    total_emission: float
+    """A single process-level hotspot entry (docs/API_CONTRACT.md §7)."""
+    rank: int
+    process_id: int | None = Field(default=None, alias="processId")
+    process: str
+    emission: float
     percentage: float
     severity: str  # CRITICAL | HIGH | MEDIUM | LOW
+    activity_count: int = Field(default=0, alias="activityCount")
 
     model_config = {"extra": "ignore", "populate_by_name": True}
 
